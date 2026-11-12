@@ -1,12 +1,12 @@
 #!/bin/bash
 # ==============================================================================================
-#  Job Search - setup for macOS (Apple Silicon and Intel)          Built by Rahul Swargam
-#  Double-click this file in Finder (the first time: right-click > Open), or run:
+#  Job Search - ONE-COMMAND SETUP for macOS (Apple Silicon and Intel)   Built by Rahul Swargam
+#  Open Terminal in this folder and run:
 #
-#    bash setup-mac.command                install / update everything to the LATEST version
-#    bash setup-mac.command --check        only show what is installed and what would change
-#    bash setup-mac.command --yes          don't ask questions (use the defaults)
-#    bash setup-mac.command --skip-system  only set up the Python packages (no Homebrew installs)
+#    bash setup-mac.sh                install / update everything to the LATEST version
+#    bash setup-mac.sh --check        only show what is installed and what would change
+#    bash setup-mac.sh --yes          don't ask questions (use the defaults)
+#    bash setup-mac.sh --skip-system  only set up the Python packages (no Homebrew installs)
 #
 #  Safe to run again any time: it updates everything to the newest version.
 #
@@ -143,7 +143,7 @@ newest_installed_python() {
 # ============================================================================================== run
 echo
 printf "  %s============================================================================%s\n" "$BLUE" "$R"
-printf "     %sJ O B   S E A R C H   -   setup for macOS%s\n" "$CYAN$B" "$R"
+printf "     %sJ O B   S E A R C H   -   one-command setup for macOS%s\n" "$CYAN$B" "$R"
 printf "     Installs or updates everything to the latest version, then checks it works\n"
 printf "     %sBuilt by Rahul Swargam  -  https://rahulswargam.online/%s\n" "$YELLOW" "$R"
 printf "  %s============================================================================%s\n" "$BLUE" "$R"
@@ -288,11 +288,11 @@ for row in "${SUMMARY[@]}"; do
 done
 echo
 if [ "$FAILED" = 1 ]; then
-  printf "  %sSomething needs attention (marked FAIL above). Fix it and run setup-mac.command again.%s\n" "$RED" "$R"
+  printf "  %sSomething needs attention (marked FAIL above). Fix it and run  bash setup-mac.sh  again.%s\n" "$RED" "$R"
   finish 1
 fi
 if [ "$CHECK" = 1 ]; then
-  printf "  %sCheck finished. Run setup-mac.command without --check to install or update.%s\n" "$YELLOW" "$R"
+  printf "  %sCheck finished. Run  bash setup-mac.sh  without --check to install or update.%s\n" "$YELLOW" "$R"
 else
   printf "  %sAll set. Start a search by double-clicking run.command%s\n" "$GREEN" "$R"
   printf "  (or in Terminal:  .venv/bin/python -m jobsearch )\n"

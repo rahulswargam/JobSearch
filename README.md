@@ -12,10 +12,9 @@ One file per system installs everything Job Search needs, always at the **latest
 
 | | Windows 10 / 11 | macOS (Apple Silicon or Intel) |
 |---|---|---|
-| Setup file | Right-click **`setup-windows.ps1`** → **Run with PowerShell** | Double-click **`setup-mac.command`** (first time: right-click → Open), or `bash setup-mac.command` |
-| From a terminal | `powershell -ExecutionPolicy Bypass -File .\setup-windows.ps1` | `bash setup-mac.command` |
-| Preview only, no changes | add `-Check` | add `--check` |
-| No questions | add `-Yes` | add `--yes` |
+| One-click setup | Double-click **`setup-windows.bat`** | In Terminal, in this folder: **`bash setup-mac.sh`** |
+| Preview only, no changes | `setup-windows.bat /check` | `bash setup-mac.sh --check` |
+| No questions | `setup-windows.bat /yes` | `bash setup-mac.sh --yes` |
 
 What they install:
 
@@ -230,7 +229,8 @@ The tests run offline and never call Apify. They cover:
 | `jobsearch/scoring.py` | Match, likelihood, overall fit, chance |
 | `jobsearch/skills.py`, `roles.py` | Skill dictionary, role families, cities |
 | `jobsearch/report.py`, `templates/` | The apply-links page, CSV and JSON |
-| `setup-windows.ps1`, `setup-mac.command` | Install or update every tool to the latest version |
+| `setup-windows.bat`, `setup-mac.sh` | One-click setup: install or update every tool to the latest version |
+| `jobsearch/setup_helper.py` | The setup files' helper: font, Terminal settings, PyPI versions, self-test |
 | `run.bat`, `run.command` | Start a search |
 
 ---
