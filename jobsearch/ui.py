@@ -283,7 +283,7 @@ def checkbox(question, columns, rows, selected, footer, min_selected=1, answer=N
     def render():
         out = [("class:qmark", "  ?  "), ("class:q", question + "\n"),
                ("class:hint", "     ↑/↓ move  ·  Space tick or untick  ·  A tick all  ·  N clear  ·  Enter continue\n\n"),
-               ("class:head", "          " + "   ".join(cell(h, w, al) for h, w, al, _ in columns) + "\n")]
+               ("class:head", "           " + "  ".join(cell(h, w, al) for h, w, al, _ in columns) + "\n")]
         for i, (key, cells, note) in enumerate(rows):
             here, on = i == cur[0], key in sel
             out += [("class:pointer" if here else "", "     ❯  " if here else "        "),
@@ -292,7 +292,7 @@ def checkbox(question, columns, rows, selected, footer, min_selected=1, answer=N
                 st = "class:rowcur" if here else ""
                 if style:
                     st = f"{st} class:{style}".strip()
-                out.append((st, cell(c, w, al) + "   "))
+                out.append((st, cell(c, w, al) + "  "))
             if note:
                 out.append(("class:tag", note))
             out.append(("", "\n"))

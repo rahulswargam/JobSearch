@@ -294,7 +294,7 @@ fi
 if [ "$CHECK" = 1 ]; then
   printf "  %sCheck finished. Run  bash setup-mac.sh  without --check to install or update.%s\n" "$YELLOW" "$R"
 else
-  printf "  %sAll set. Start a search by double-clicking run.command%s\n" "$GREEN" "$R"
+  printf "  %sAll set. Start a search with:  bash jobsearch.sh%s\n" "$GREEN" "$R"
   printf "  (or in Terminal:  .venv/bin/python -m jobsearch )\n"
   printf "  The first run asks for your Apify API key: get one free at https://console.apify.com\n"
 fi

@@ -444,7 +444,7 @@ def sources_step(cfg, search, tok, acct):
     for src in sources.ALL:
         e, runs, used = usage_cells(src, search, acct, used_by)
         est[src.key] = e
-        note = "min 200 jobs, mostly older" if src.key == "career-sites" else "may include older jobs" if src.stale_risk else ""
+        note = "200 min, mostly old" if src.key == "career-sites" else "older jobs too" if src.stale_risk else ""
         rows.append((src.key, [src.key, BOARDS.get(src.key, src.label), ui.money(e), runs, used], note))
     columns = [("source", 17, "left", None), ("board", 23, "left", None), ("per run", 8, "right", "cost"),
                ("runs left", 9, "right", None), ("used this month", 16, "left", None)]

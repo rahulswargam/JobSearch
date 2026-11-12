@@ -83,17 +83,19 @@ class SetupFiles(unittest.TestCase):
             self.assertIn(called, labels, f"call :{called} has no label")
 
     def test_mac_files_are_unix_scripts(self):
-        for f in (MAC, ROOT / "run.command"):
+        for f in (MAC, ROOT / "jobsearch.sh"):
             raw = f.read_bytes()
             self.assertTrue(raw.startswith(b"#!/bin/bash" + LF))
             self.assertNotIn(CR, raw, f"{f.name} must use LF line endings to run on macOS")
         attrs = (ROOT / ".gitattributes").read_text(encoding="utf-8")
-        for rule in ("*.sh text eol=lf", "*.command text eol=lf", "*.bat text eol=crlf"):
+        for rule in ("*.sh text eol=lf", "*.bat text eol=crlf"):
             self.assertIn(rule, attrs)
 
     def test_launchers_prefer_the_setup_venv(self):
-        self.assertIn(r".venv\Scripts\python.exe", (ROOT / "run.bat").read_text(encoding="utf-8"))
-        self.assertIn(".venv/bin/python", (ROOT / "run.command").read_text(encoding="utf-8"))
+        self.assertIn(r".venv\Scripts\python.exe", (ROOT / "jobsearch.bat").read_text(encoding="utf-8"))
+        self.assertIn(".venv/bin/python", (ROOT / "jobsearch.sh").read_text(encoding="utf-8"))
+        for old in ("run.bat", "run.command"):
+            self.assertFalse((ROOT / old).exists(), f"{old} was renamed")
 
 
 class Helper(unittest.TestCase):

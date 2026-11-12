@@ -218,7 +218,7 @@ if "%FAILED%"=="1" (
 if "%CHECK%"=="1" (
   echo   %Y%Check finished. Run setup-windows.bat without /check to install or update.%N%
 ) else (
-  echo   %G%All set. Start a search by double-clicking run.bat%N%
+  echo   %G%All set. Start a search by double-clicking jobsearch.bat%N%
   echo   or in a terminal:  .venv\Scripts\python -m jobsearch
   echo   The first run asks for your Apify API key: get one free at https://console.apify.com
   echo   Close and reopen Windows Terminal to see the new font.
