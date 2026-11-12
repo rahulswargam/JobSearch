@@ -1,0 +1,428 @@
+{
+ "_note": "One or two rows per actor, shaped like each actor's documented output. '{h:N}' becomes an ISO time N hours ago, '{d:N}' a date N days ago, '{ist:N}' an India-time 'YYYY-MM-DD HH:MM:SS' N hours ago. Field names follow what each actor really returned in a live run (values are made up).",
+ "linkedin": [
+  {
+   "jobUrl": "https://www.linkedin.com/jobs/view/4404759076",
+   "jobTitle": "DevOps Engineer",
+   "companyName": "Avaloq",
+   "location": "Pune, Maharashtra, India",
+   "employmentType": "Full-time",
+   "seniorityLevel": "Mid-Senior level",
+   "experienceYears": {
+    "min": 3,
+    "max": 6,
+    "text": "3-6 years of experience"
+   },
+   "postedDate": "{d:0}",
+   "postedTime": "3 hours ago",
+   "skills": [
+    "AWS",
+    "Kubernetes",
+    "Terraform",
+    "Jenkins",
+    "Python"
+   ],
+   "applyUrl": "https://careers.avaloq.com/job/123?utm_source=linkedin&ref=li",
+   "applicationType": "External",
+   "applicantsCount": {
+    "min": 40,
+    "max": null,
+    "text": "40 applicants"
+   },
+   "jobDescription": "We need a DevOps engineer with AWS, EKS, Terraform, Helm and GitHub Actions. ArgoCD is a plus."
+  },
+  {
+   "jobUrl": "https://www.linkedin.com/jobs/view/4404759077",
+   "jobTitle": "Java Backend Developer",
+   "companyName": "Acme Bank",
+   "location": "Bengaluru, Karnataka, India",
+   "experienceYears": {
+    "min": 4,
+    "max": null,
+    "text": "4+ years"
+   },
+   "postedDate": "{d:0}",
+   "skills": [
+    "Java",
+    "Spring Boot",
+    "SQL",
+    "Hibernate"
+   ],
+   "applyUrl": "https://www.linkedin.com/jobs/view/4404759077",
+   "applicationType": "Easy Apply",
+   "applicantsCount": {
+    "min": 200,
+    "max": null,
+    "text": "Over 200 applicants"
+   },
+   "jobDescription": "Java, Spring Boot, microservices, Hibernate, SQL. Some Docker."
+  },
+  {
+   "jobUrl": "https://www.linkedin.com/jobs/view/4404759078",
+   "jobTitle": "Senior Site Reliability Engineer",
+   "companyName": "Old Corp",
+   "location": "Pune, Maharashtra, India",
+   "postedDate": "{d:9}",
+   "skills": [
+    "Kubernetes"
+   ],
+   "applicationType": "Easy Apply",
+   "applyUrl": "https://www.linkedin.com/jobs/view/4404759078"
+  }
+ ],
+ "naukri": [
+  {
+   "jobId": "100426916818",
+   "title": "SRE / DevOps Engineer",
+   "companyName": "Accenture",
+   "minimumExperience": 4,
+   "maximumExperience": 8,
+   "experienceText": "4-8 Yrs",
+   "salary": "Not disclosed",
+   "location": "Pune",
+   "skills": [
+    "kubernetes",
+    "terraform",
+    "aws",
+    "load balancing",
+    "go"
+   ],
+   "createdDate": "{h:5}",
+   "portalUrl": "https://www.naukri.com/job-listings-sre-devops-engineer-accenture-pune-4-to-8-years-100426916818",
+   "applyCount": 12,
+   "companyApplyUrl": "https://www.naukri.com/cloudgateway-apply/apply-services/v0/apply/saveCompanyApply?id=&file=100426916818",
+   "description": "Kubernetes, Terraform, AWS, Prometheus, Grafana, on-call rotations.",
+   "employmentType": "Full Time, Permanent",
+   "companyApplyJob": true
+  },
+  {
+   "jobId": "100426916819",
+   "title": "Cloud Engineer",
+   "companyName": "Infosys",
+   "minimumExperience": 3,
+   "maximumExperience": 5,
+   "experienceText": "3-5 Yrs",
+   "salary": "Not disclosed",
+   "location": "Hyderabad, Pune",
+   "skills": [
+    "azure",
+    "terraform",
+    "ansible"
+   ],
+   "createdDate": "{h:20}",
+   "portalUrl": "https://www.naukri.com/job-listings-cloud-engineer-infosys-100426916819",
+   "applyCount": 230,
+   "description": "Azure cloud engineer: Terraform, Ansible, AKS, Azure DevOps pipelines.",
+   "applyRedirectUrl": "https://career.infosys.com/jobdesc?jobReferenceCode=INFSYS-123",
+   "companyApplyUrl": "https://www.naukri.com/cloudgateway-apply/apply-services/v0/apply/saveCompanyApply?id=&file=100426916819",
+   "salaryHidden": false,
+   "salaryMin": 1200000,
+   "salaryMax": 1800000,
+   "salaryCurrency": "INR"
+  }
+ ],
+ "naukri-memo23": [
+  {
+   "jobId": "140725014464",
+   "title": "Platform Engineer (Kubernetes)",
+   "staticUrl": "https://www.naukri.com/job-listings-platform-engineer-140725014464",
+   "companyDetail": {
+    "name": "Mankind Tech"
+   },
+   "staticCompanyName": "mankind-tech-jobs-careers-15478",
+   "locations": [
+    {
+     "label": "Pune"
+    }
+   ],
+   "minimumExperience": 5,
+   "maximumExperience": 9,
+   "experienceText": "5-9 Yrs",
+   "employmentType": "Full Time, Permanent",
+   "wfhType": "3",
+   "keySkills": {
+    "other": [
+     {
+      "label": "Kubernetes"
+     },
+     {
+      "label": "Helm"
+     },
+     {
+      "label": "Istio"
+     }
+    ],
+    "preferred": [
+     {
+      "label": "Terraform"
+     }
+    ]
+   },
+   "salaryDetail": {
+    "minimumSalary": 1800000,
+    "maximumSalary": 2800000,
+    "currency": "INR",
+    "hideSalary": false
+   },
+   "applyCount": 81,
+   "createdDate": "{ist:6}",
+   "applyButtonText": "Apply on company site",
+   "applyRedirectUrl": "https://careers.mankindtech.com/jobs/0930-platform",
+   "description": "<p>Run <b>Kubernetes</b> with Helm and Istio.</p>"
+  }
+ ],
+ "naukri-mk": [
+  {
+   "title": "DevOps Engineer - AWS",
+   "jobId": "220126040161",
+   "companyName": "CenturyTech",
+   "tagsAndSkills": "aws,jenkins,docker,kubernetes,terraform",
+   "jdURL": "https://www.naukri.com/job-listings-devops-engineer-aws-centurytech-220126040161",
+   "experienceText": "3-7 Yrs",
+   "minimumExperience": "3",
+   "maximumExperience": "7",
+   "salary": "Not disclosed",
+   "location": "Pune",
+   "createdDate": "{ist:2}",
+   "footerPlaceholderLabel": "Just Now",
+   "jobDescription": "<p>AWS DevOps role: Jenkins, Docker, EKS.</p>"
+  }
+ ],
+ "india-feed": [
+  {
+   "listingKey": "foundit:99887",
+   "sourcePlatform": "foundit",
+   "title": "SRE / DevOps Engineer",
+   "company": "Accenture",
+   "location": "Pune",
+   "experienceMin": 4,
+   "experienceMax": 8,
+   "skills": [
+    "Kubernetes",
+    "Terraform"
+   ],
+   "postedAt": "{h:7}",
+   "listingUrl": "https://www.foundit.in/job/sre-devops-engineer-accenture-99887",
+   "applicationUrl": "https://www.accenture.com/in-en/careers/jobdetails?id=R123",
+   "description": "Kubernetes, Terraform, AWS."
+  },
+  {
+   "listingKey": "shine:5566",
+   "sourcePlatform": "shine",
+   "title": "DevOps Lead",
+   "company": {
+    "name": "Shine Corp"
+   },
+   "location": "Mumbai",
+   "experienceText": "8-12 Yrs",
+   "skills": [
+    "Jenkins",
+    "AWS"
+   ],
+   "postedAt": "{h:10}",
+   "listingUrl": "https://www.shine.com/jobs/devops-lead/5566"
+  }
+ ],
+ "instahyre": [
+  {
+   "jobId": "77001",
+   "title": "DevOps Engineer",
+   "companyName": "Zeta",
+   "locations": [
+    "Bangalore",
+    "Pune"
+   ],
+   "isRemote": false,
+   "skills": [
+    "AWS",
+    "Kubernetes",
+    "Terraform",
+    "Go"
+   ],
+   "publicUrl": "https://www.instahyre.com/job-77001-devops-engineer-at-zeta-bangalore/",
+   "experienceMin": 3,
+   "experienceMax": 6
+  }
+ ],
+ "instahyre-memo23": [
+  {
+   "type": "job",
+   "source": "instahyre",
+   "jobId": "439825",
+   "jobUrl": "https://www.instahyre.com/job-439825-sre-at-biopeak-pune/",
+   "title": "Site Reliability Engineer",
+   "companyName": "Biopeak",
+   "location": "Pune",
+   "remote": false,
+   "skills": [
+    "Kubernetes",
+    "Python",
+    "CI / CD",
+    "Golang",
+    "Prometheus"
+   ],
+   "applyType": "external",
+   "externalApplyUrl": "https://jobs.lever.co/biopeak/abc",
+   "postedDate": "{h:8}",
+   "salaryRaw": "18-30 LPA",
+   "descriptionText": "Run Kubernetes and Prometheus; Go a plus.",
+   "employmentTypes": [
+    "Full time"
+   ]
+  }
+ ],
+ "hirist": [
+  {
+   "jobId": "1596353",
+   "url": "https://www.hirist.tech/j/sre-at-razorpay-1596353",
+   "title": "Senior SRE",
+   "company": "Razorpay",
+   "location": "Bangalore",
+   "isRemote": false,
+   "salaryHidden": false,
+   "salaryRaw": "25 - 40 LPA",
+   "experienceMin": 4,
+   "experienceMax": 8,
+   "skills": [
+    "Kubernetes",
+    "AWS",
+    "Terraform",
+    "Go"
+   ],
+   "postedAt": "{h:12}"
+  }
+ ],
+ "wellfound": [
+  {
+   "id": "4716549",
+   "title": "Infrastructure Engineer",
+   "portalUrl": "https://wellfound.com/jobs/4716549-infrastructure-engineer",
+   "compensation": "₹20L – ₹35L • 0.1% – 0.5%",
+   "description": "Terraform, AWS, Kubernetes. 3+ years of experience.",
+   "jobType": "full-time",
+   "postedAt": "{h:9}",
+   "locationNames": [
+    "Bengaluru"
+   ],
+   "remote": true,
+   "yearsExperienceMin": 3,
+   "skills": [
+    "Terraform",
+    "AWS",
+    "Kubernetes"
+   ],
+   "companyName": "Hourglass"
+  }
+ ],
+ "remote": [
+  {
+   "id": "hb-1",
+   "jobTitle": "Senior DevOps Engineer",
+   "companyName": "Remotely Inc",
+   "applicationLink": "https://boards.greenhouse.io/remotely/jobs/1",
+   "jobBoardLink": "https://boards.greenhouse.io/remotely/jobs/1",
+   "datePosted": "{d:0}",
+   "locationType": "Remote",
+   "location": "Remote - India",
+   "jobType": "Full Time",
+   "yearsOfExperience": {
+    "min": 5,
+    "max": null
+   },
+   "salaryRange": {
+    "min": 40000,
+    "max": 60000,
+    "currency": "USD",
+    "period": "year"
+   },
+   "skills": [
+    "Kubernetes",
+    "Terraform"
+   ],
+   "technologies": [
+    "AWS",
+    "ArgoCD"
+   ],
+   "descriptionText": "Remote DevOps role."
+  }
+ ],
+ "weworkremotely": [
+  {
+   "id": "https://weworkremotely.com/remote-jobs/acme-devops",
+   "source_url": "https://weworkremotely.com/remote-jobs/acme-devops",
+   "apply_url": "https://acmecorp.com/careers/devops",
+   "title": "DevOps Engineer",
+   "description": "Docker, Kubernetes, Terraform on AWS.",
+   "type": "full-time",
+   "location": "Worldwide",
+   "company_name": "Acme Corp",
+   "tags": [
+    "devops"
+   ],
+   "posted_at": "{h:15}"
+  }
+ ],
+ "career-sites": [
+  {
+   "id": "cs-1",
+   "date_posted": "{h:4}",
+   "title": "Cloud Platform Engineer",
+   "organization": "Workday Co",
+   "url": "https://workdayco.wd5.myworkdayjobs.com/en-US/careers/job/Pune/Cloud-Platform-Engineer_R1",
+   "locations_derived": [
+    "Pune, Maharashtra, India"
+   ],
+   "ai_experience_level": "2-5",
+   "ai_key_skills": [
+    "AWS",
+    "Terraform",
+    "Kubernetes"
+   ],
+   "ai_work_arrangement": "Hybrid",
+   "description_text": "Cloud platform engineering on AWS with Terraform.",
+   "employment_type": [
+    "FULL_TIME"
+   ]
+  }
+ ],
+ "upwork": [
+  {
+   "jobId": "2047620102105297516",
+   "title": "Kubernetes + Terraform expert for AWS migration",
+   "description": "Migrate to EKS with Terraform.",
+   "jobType": "HOURLY",
+   "experienceLevel": "ExpertLevel",
+   "hourlyBudgetMin": 40,
+   "hourlyBudgetMax": 70,
+   "skills": [
+    "Kubernetes",
+    "Terraform",
+    "AWS"
+   ],
+   "publishTime": "{h:3}",
+   "totalApplicants": 8,
+   "clientCountry": "United States",
+   "url": "https://www.upwork.com/jobs/~02047620102105297516"
+  }
+ ],
+ "upwork-neatrat": [
+  {
+   "id": "abc1",
+   "title": "DevOps engineer for CI/CD setup",
+   "description": "Set up GitHub Actions and Docker.",
+   "url": "https://www.upwork.com/jobs/~0abc1",
+   "budget": "$500",
+   "absoluteDate": "{h:2}",
+   "relativeDate": "Posted 2 hours ago",
+   "jobType": "Fixed price",
+   "experienceLevel": "Intermediate",
+   "clientLocation": "Germany",
+   "proposals": 15,
+   "tags": [
+    "Docker",
+    "GitHub Actions",
+    "CI/CD"
+   ]
+  }
+ ]
+}

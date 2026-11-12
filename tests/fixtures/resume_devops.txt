@@ -1,0 +1,26 @@
+ASHA VERMA
+Site Reliability Engineer | Kubernetes | AWS | Terraform
+Pune, India | asha.verma@example.com
+
+PROFESSIONAL SUMMARY
+Site Reliability Engineer with 6 years of IT experience, including 4 years of hands-on SRE and cloud work.
+Builds CI/CD pipelines with GitHub Actions and Jenkins, runs Kubernetes (EKS) clusters, and writes Terraform.
+
+TECHNICAL SKILLS
+Cloud: AWS (EC2, S3, IAM, VPC, RDS), Azure
+Containers: Docker, Kubernetes, Helm
+IaC: Terraform, Ansible
+Languages: Python, Go, Bash
+Monitoring: Prometheus, Grafana, Datadog
+
+WORK EXPERIENCE
+Site Reliability Engineer – Example Cloud Pvt Ltd
+Jan 2022 – Present
+• Ran production Kubernetes clusters on EKS and cut paging alerts by 40%.
+
+Systems Administrator – Sample Infotech
+Jun 2019 – Dec 2021
+• Linux administration, patching and shell scripting.
+
+EDUCATION
+B.Tech Computer Science, Example University, 2015 – 2019
