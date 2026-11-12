@@ -101,16 +101,30 @@ brew_ensure() {   # brew_ensure name "Label" [cask]
     else ok "$label $have (latest)"; record "$label" "$have" "latest"; fi
     return 0
   fi
-  if [ -z "$have" ]; then
-    info "Installing $label $latest ..."; brew install $flag "$name"
-  elif [ -n "$latest" ] && [ "$have" != "$latest" ]; then
-    info "Updating $label $have -> $latest ..."; brew upgrade $flag "$name"
-  else
+  if [ -n "$have" ] && { [ -z "$latest" ] || [ "$have" = "$latest" ]; }; then
     ok "$label $have is already the latest"; record "$label" "$have" "latest"; return 0
   fi
-  have="$(brew_have "$name" "$kind")"
-  if [ -n "$have" ]; then ok "$label $have"; record "$label" "$have" "installed / updated"; return 0; fi
+  local before="$have" now="$have" try
+  for try in 1 2; do
+    [ "$try" = 2 ] && info "Trying $label again (downloads sometimes time out) ..."
+    if [ -z "$now" ]; then info "Installing $label $latest ..."; brew install $flag "$name"
+    else info "Updating $label $now -> $latest ..."; brew upgrade $flag "$name"; fi
+    now="$(brew_have "$name" "$kind")"
+    if [ -n "$now" ] && { [ -z "$latest" ] || [ "$now" = "$latest" ]; }; then break; fi
+  done
+  if [ -n "$now" ] && { [ -z "$latest" ] || [ "$now" = "$latest" ]; }; then
+    ok "$label $now"; record "$label" "$now" "$([ -n "$before" ] && echo "updated from $before" || echo installed)"; return 0
+  fi
+  if [ -n "$now" ]; then
+    warn "$label couldn't be updated to $latest (it's still $now and works). Run this setup again later."
+    record "$label" "$now" "update to $latest failed"; return 0
+  fi
   bad "$label could not be installed"; record "$label" "-" "failed"; return 1
+}
+
+pypi_latest() {   # newest version of a package on PyPI
+  curl -fsS --max-time 20 "https://pypi.org/pypi/$1/json" 2>/dev/null \
+    | "$VPY" -c 'import json,sys; print(json.load(sys.stdin)["info"]["version"])' 2>/dev/null
 }
 
 newest_python_formula() {
@@ -199,7 +213,7 @@ elif command -v brew >/dev/null 2>&1; then
   brew_ensure git "Git"
   brew_ensure font-google-sans-code "Google Sans Code font" cask
   if [ "$CHECK" = 0 ]; then
-    info "To use it in Terminal: Terminal > Settings > Profiles > Text > Font > Change > Google Sans Code"
+    info "To use it in Terminal: Terminal > Settings > Profiles > Text > Font > Change > Google Sans Code, style Monospace"
     info "(iTerm2: Settings > Profiles > Text > Font)"
   fi
 else
@@ -240,7 +254,10 @@ else
   done
   for pkg in $REQUIRED $OPTIONAL; do
     ver="$("$VPY" -m pip show "$pkg" 2>/dev/null | awk '/^Version:/{print $2}')"
-    if [ -n "$ver" ]; then ok "$pkg $ver"; record "$pkg" "$ver" "latest"
+    if [ -n "$ver" ]; then
+      newest="$(pypi_latest "$pkg")"
+      if [ -z "$newest" ] || [ "$newest" = "$ver" ]; then ok "$pkg $ver"; record "$pkg" "$ver" "latest"
+      else ok "$pkg $ver (newest for Python ${PYV%.*}; PyPI has $newest)"; record "$pkg" "$ver" "newest for Python ${PYV%.*} (PyPI has $newest)"; fi
     elif echo " $OPTIONAL " | grep -q " $pkg "; then record "$pkg" "-" "optional, skipped"
     else bad "$pkg is missing"; record "$pkg" "-" "failed"; fi
   done
@@ -266,8 +283,8 @@ printf "  %sSummary%s\n" "$CYAN$B" "$R"
 printf "  %s----------------------------------------------------------------------------%s\n" "$BLUE" "$R"
 for row in "${SUMMARY[@]}"; do
   tool="${row%%|*}"; rest="${row#*|}"; ver="${rest%%|*}"; status="${rest#*|}"
-  case "$status" in *fail*) c="$RED" ;; *would*|*skipped*|*optional*) c="$YELLOW" ;; *) c="$GREEN" ;; esac
-  printf "  %-34s %-18s %s%s%s\n" "$tool" "$ver" "$c" "$status" "$R"
+  case "$status" in failed*) c="$RED" ;; *would*|*skipped*|*optional*|*failed*|*"newest for"*) c="$YELLOW" ;; *) c="$GREEN" ;; esac
+  printf "  %-32s %-15s %s%s%s\n" "$tool" "$ver" "$c" "$status" "$R"
 done
 echo
 if [ "$FAILED" = 1 ]; then

@@ -6,10 +6,11 @@ import unittest
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-WIN = ROOT / "setup-windows.bat"
+WIN = ROOT / "setup-windows.ps1"
 MAC = ROOT / "setup-mac.command"
 IMPORT_NAMES = {"fitz": "PyMuPDF", "pymupdf": "PyMuPDF", "prompt_toolkit": "prompt_toolkit", "pypdf": "pypdf", "rich": "rich",
                 "keyring": "keyring", "certifi": "certifi"}
+CRLF, LF, CR = b"\r\n", b"\n", b"\r"
 
 
 def third_party_imports():
@@ -43,33 +44,44 @@ class SetupFiles(unittest.TestCase):
         win, mac = WIN.read_text(encoding="utf-8"), MAC.read_text(encoding="utf-8")
         self.assertEqual(self.packages(win, "Required"), self.packages(mac, "Required"))
         self.assertEqual(self.packages(win, "Optional"), self.packages(mac, "Optional"))
-        req = {l.split("#")[0].strip() for l in (ROOT / "requirements.txt").read_text(encoding="utf-8").splitlines() if l.split("#")[0].strip()}
+        req_text = (ROOT / "requirements.txt").read_text(encoding="utf-8")
+        req = {l.split("#")[0].strip() for l in req_text.splitlines() if l.split("#")[0].strip()}
         self.assertEqual(req | {"pip"}, self.packages(win, "Required"))
-        optional_comment = set(re.findall(r"^#\s+(\w+)\s{2,}", (ROOT / "requirements.txt").read_text(encoding="utf-8"), re.M))
+        optional_comment = set(re.findall(r"^#\s+(\w+)\s{2,}", req_text, re.M))
         self.assertEqual(optional_comment, self.packages(win, "Optional"))
 
     def test_tools_cover_python_tk_git_font_browser(self):
         win, mac = WIN.read_text(encoding="utf-8"), MAC.read_text(encoding="utf-8")
-        for needle in ("Python.Python.3", "Include_tcltk=1", "Git.Git", "Microsoft.WindowsTerminal", "googlesans-code", "import tkinter", "Default-Browser"):
+        for needle in ("Python.Python.3", "Include_tcltk=1", "Git.Git", "Microsoft.WindowsTerminal", "googlesans-code",
+                       "import tkinter", "Default-Browser"):
             self.assertIn(needle, win)
         for needle in ("python@3", "python-tk@3", "brew_ensure git", "font-google-sans-code", "import tkinter", "Homebrew/install"):
             self.assertIn(needle, mac)
 
-    def test_windows_file_is_a_valid_hybrid(self):
+    def test_windows_file_is_a_plain_powershell_script(self):
         raw = WIN.read_bytes()
-        self.assertTrue(raw.startswith(b"<# :\r\n"), "must start with the batch/PowerShell hybrid header and CRLF line endings")
-        self.assertNotIn(b"\n", raw.replace(b"\r\n", b""), "every line must end in CRLF for cmd.exe")
-        raw.decode("ascii")  # plain ASCII so cmd.exe and Windows PowerShell 5.1 read it the same way
-        self.assertEqual(raw.count(b"#>"), 1, "the batch part must be one PowerShell block comment")
+        self.assertTrue(raw.startswith(b"<#" + CRLF), "starts with its help comment, CRLF line endings")
+        self.assertNotIn(LF, raw.replace(CRLF, b""), "every line must end in CRLF")
+        text = raw.decode("ascii")  # Windows PowerShell 5.1 reads BOM-less scripts as ANSI: keep it ASCII
+        self.assertIn("param(", text)
+        # Antivirus treats "run this file's text as code" as malware behaviour (Defender blocked it): never do that
+        for pattern in ("Invoke-Expression", "iex ", "ReadAllText($env:", "[scriptblock]::Create", "-EncodedCommand"):
+            self.assertNotIn(pattern, text)
+        # File names can contain [ ] (the font is "GoogleSansCode[MONO,wght].ttf"); without -LiteralPath PowerShell
+        # treats them as wildcards and silently does nothing. Only the registry lookup ($key) may skip it.
+        loose = [l.strip() for l in text.splitlines()
+                 if re.search(r"\b(Test-Path|Copy-Item|Get-Content|Set-Content|Remove-Item)\s+\$(?!key\b)", l)]
+        self.assertEqual(loose, [], "use -LiteralPath for file paths")
 
     def test_mac_files_are_unix_scripts(self):
         for f in (MAC, ROOT / "run.command"):
             raw = f.read_bytes()
-            self.assertTrue(raw.startswith(b"#!/bin/bash\n"))
-            self.assertNotIn(b"\r", raw, f"{f.name} must use LF line endings to run on macOS")
+            self.assertTrue(raw.startswith(b"#!/bin/bash" + LF))
+            self.assertNotIn(CR, raw, f"{f.name} must use LF line endings to run on macOS")
         attrs = (ROOT / ".gitattributes").read_text(encoding="utf-8")
         self.assertIn("*.command text eol=lf", attrs)
         self.assertIn("*.bat text eol=crlf", attrs)
+        self.assertIn("*.ps1 text eol=crlf", attrs)
 
     def test_launchers_prefer_the_setup_venv(self):
         self.assertIn(r".venv\Scripts\python.exe", (ROOT / "run.bat").read_text(encoding="utf-8"))

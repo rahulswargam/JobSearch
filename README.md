@@ -12,8 +12,10 @@ One file per system installs everything Job Search needs, always at the **latest
 
 | | Windows 10 / 11 | macOS (Apple Silicon or Intel) |
 |---|---|---|
-| Setup file | Double-click **`setup-windows.bat`** | Double-click **`setup-mac.command`** (first time: right-click → Open), or `bash setup-mac.command` |
-| Preview only, no changes | `setup-windows.bat /check` | `bash setup-mac.command --check` |
+| Setup file | Right-click **`setup-windows.ps1`** → **Run with PowerShell** | Double-click **`setup-mac.command`** (first time: right-click → Open), or `bash setup-mac.command` |
+| From a terminal | `powershell -ExecutionPolicy Bypass -File .\setup-windows.ps1` | `bash setup-mac.command` |
+| Preview only, no changes | add `-Check` | add `--check` |
+| No questions | add `-Yes` | add `--yes` |
 
 What they install:
 
@@ -30,7 +32,7 @@ What they install:
 | keyring (optional) | moves a key saved by an older version | in `.venv` | in `.venv` |
 | Git | downloads and updates this project | Git for Windows | `git` |
 | Terminal | full colours and clickable links | Windows Terminal | Terminal (built in) |
-| Google Sans Code | the terminal font | installed for your account; can set it in Windows Terminal | Homebrew font; set it in Terminal → Settings → Profiles → Text |
+| Google Sans Code | the terminal font | installed for your account and set in Windows Terminal (as "Google Sans Code Monospace") | Homebrew font; choose it in Terminal → Settings → Profiles → Text |
 | Web browser | opens the job links page | your default (Edge is built in) | your default (Safari is built in) |
 | Apify account | runs the job searches | free at [console.apify.com](https://console.apify.com); the first run asks for its API key | same |
 
@@ -87,11 +89,11 @@ Apify credit is one balance for your whole account; it isn't split per actor. Fo
 
 ## Use Google Sans in the terminal (optional)
 
-A program can't choose the terminal's font; the terminal app does. Google publishes a monospaced version of Google Sans, **Google Sans Code**, on [Google Fonts](https://fonts.google.com/specimen/Google+Sans+Code). To use it:
+A program can't choose the terminal's font; the terminal app does. Google publishes a coding version of Google Sans, **Google Sans Code**, on [Google Fonts](https://fonts.google.com/specimen/Google+Sans+Code). The setup files install it, and on Windows they also set it in Windows Terminal. To do it by hand:
 
 1. Download it from Google Fonts and install the font files (right-click → Install).
-2. **Windows Terminal:** Settings → your profile (PowerShell or Command Prompt) → Appearance → Font face → **Google Sans Code**.
-   **macOS Terminal:** Settings → Profiles → Text → Font → Change → **Google Sans Code**. In iTerm2: Settings → Profiles → Text → Font.
+2. **Windows Terminal:** Settings → Defaults (or your profile) → Appearance → Font face → **Google Sans Code Monospace**. Use that exact name; plain "Google Sans Code" isn't found.
+   **macOS Terminal:** Settings → Profiles → Text → Font → Change → **Google Sans Code**, style **Monospace**. In iTerm2: Settings → Profiles → Text → Font.
 
 For the best colours, use Windows Terminal (the default in Windows 11), the macOS Terminal or iTerm2, or VS Code's terminal.
 
@@ -228,7 +230,7 @@ The tests run offline and never call Apify. They cover:
 | `jobsearch/scoring.py` | Match, likelihood, overall fit, chance |
 | `jobsearch/skills.py`, `roles.py` | Skill dictionary, role families, cities |
 | `jobsearch/report.py`, `templates/` | The apply-links page, CSV and JSON |
-| `setup-windows.bat`, `setup-mac.command` | Install or update every tool to the latest version |
+| `setup-windows.ps1`, `setup-mac.command` | Install or update every tool to the latest version |
 | `run.bat`, `run.command` | Start a search |
 
 ---

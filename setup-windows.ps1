@@ -1,25 +1,22 @@
-<# :
-@echo off
-rem ============================================================================================
-rem  Job Search - setup for Windows 10 / 11            Built by Rahul Swargam
-rem  Double-click this file. It installs (or updates to the LATEST version) everything the tool
-rem  needs, then checks that it all works. Safe to run again any time to update everything.
-rem
-rem    setup-windows.bat              install / update everything
-rem    setup-windows.bat /check       only show what is installed and what would change
-rem    setup-windows.bat /yes         don't ask questions (use the defaults)
-rem    setup-windows.bat /skip-system only set up the Python packages (no winget installs)
-rem ============================================================================================
-setlocal
-set "JS_ROOT=%~dp0"
-set "JS_SELF=%~f0"
-set "JS_ARGS=%*"
-powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Invoke-Expression ([System.IO.File]::ReadAllText($env:JS_SELF))"
-set "JS_CODE=%ERRORLEVEL%"
-echo.
-pause
-exit /b %JS_CODE%
+<#
+================================================================================================
+ Job Search - setup for Windows 10 / 11                        Built by Rahul Swargam
+
+ Right-click this file > "Run with PowerShell". It installs (or updates to the LATEST version)
+ everything the tool needs, then checks that it all works. Safe to run again any time.
+
+ From a terminal in this folder:
+   powershell -ExecutionPolicy Bypass -File .\setup-windows.ps1              install / update everything
+   powershell -ExecutionPolicy Bypass -File .\setup-windows.ps1 -Check       only show what would change
+   powershell -ExecutionPolicy Bypass -File .\setup-windows.ps1 -Yes         don't ask questions
+   powershell -ExecutionPolicy Bypass -File .\setup-windows.ps1 -SkipSystem  only the Python packages
+================================================================================================
 #>
+param(
+    [switch]$Check,
+    [switch]$Yes,
+    [switch]$SkipSystem
+)
 
 # ==============================================================================================
 #  Everything Job Search needs on Windows (all installed at their latest version):
@@ -43,11 +40,10 @@ $ErrorActionPreference = 'Continue'   # native tools write progress to stderr; r
 $ProgressPreference = 'SilentlyContinue'
 try { [Console]::OutputEncoding = [Text.Encoding]::UTF8 } catch { }
 
-$Root = $env:JS_ROOT.TrimEnd('\')
-$Opts = " " + ("" + $env:JS_ARGS).ToLower() + " "
-$CheckOnly  = $Opts -match '\s[/-]{1,2}check\s'
-$AssumeYes  = $Opts -match '\s[/-]{1,2}(yes|y|quiet)\s'
-$SkipSystem = $Opts -match '\s[/-]{1,2}skip-system\s'
+$Root = $PSScriptRoot
+$CheckOnly = [bool]$Check
+$AssumeYes = [bool]$Yes
+$SkipSystem = [bool]$SkipSystem
 
 $Required = @('pip', 'rich', 'prompt_toolkit', 'pypdf', 'certifi')
 $Optional = @('PyMuPDF', 'keyring')
@@ -77,6 +73,14 @@ function Ask([string]$question, [bool]$default = $true) {
     return $a.Trim().ToLower().StartsWith('y')
 }
 
+function Done([int]$code) {
+    if (-not $AssumeYes -and [Environment]::UserInteractive) {
+        Write-Host ''
+        [void](Read-Host '  Press Enter to close')
+    }
+    exit $code
+}
+
 # ---------------------------------------------------------------------------------------------- winget
 function Has-Winget { return [bool](Get-Command winget -ErrorAction SilentlyContinue) }
 
@@ -104,22 +108,43 @@ function Winget-Ensure([string]$id, [string]$name, [string[]]$extra = @()) {
         return $true
     }
     $common = @('--id', $id, '--exact', '--source', 'winget', '--silent', '--accept-package-agreements', '--accept-source-agreements', '--disable-interactivity')
-    if (-not $have) {
-        Info "Installing $name $latest ..."
-        & winget install @common @extra | Out-Host
-    } elseif ($latest -and $have -ne $latest) {
-        Info "Updating $name $have -> $latest ..."
-        & winget upgrade @common @extra | Out-Host
-    } else {
+    if ($have -and (-not $latest -or $have -eq $latest)) {
         Ok "$name $have is already the latest"
         Record $name $have 'latest'
         return $true
     }
-    $now = Winget-Installed $id
-    if ($now) { Ok "$name $now"; Record $name $now 'installed / updated'; return $true }
+    $now = $have
+    for ($try = 1; $try -le 2; $try++) {
+        if ($try -gt 1) { Info "Trying $name again (downloads sometimes time out) ..." }
+        if (-not $now) { Info "Installing $name $latest ..."; & winget install @common @extra | Out-Host }
+        else { Info "Updating $name $now -> $latest ..."; & winget upgrade @common @extra | Out-Host }
+        $now = Winget-Installed $id
+        if ($now -and (-not $latest -or $now -eq $latest)) { break }
+    }
+    if ($now -and (-not $latest -or $now -eq $latest)) {
+        Ok "$name $now"
+        Record $name $now $(if ($have) { "updated from $have" } else { 'installed' })
+        return $true
+    }
+    if ($now) {
+        Warn "$name couldn't be updated to $latest (it's still $now and works). Run this setup again later."
+        Record $name $now "update to $latest failed"
+        return $true
+    }
     Bad "$name could not be installed (winget exit code $LASTEXITCODE)"
     Record $name '-' 'failed'
     return $false
+}
+
+function PyPI-Latest([string]$pkg) {
+    try { return (Invoke-RestMethod ("https://pypi.org/pypi/{0}/json" -f $pkg) -TimeoutSec 20 -ErrorAction Stop).info.version }
+    catch { return $null }
+}
+
+function Package-Status([string]$pkg, [string]$ver, [string]$pyMinor) {
+    $newest = PyPI-Latest $pkg
+    if (-not $newest -or $newest -eq $ver) { return 'latest' }
+    return ("newest for Python {0} (PyPI has {1})" -f $pyMinor, $newest)
 }
 
 function Refresh-Path {
@@ -136,11 +161,11 @@ function Python-Exe([int]$minor) {
             $props = Get-ItemProperty $key
             $exe = $props.ExecutablePath
             if (-not $exe -and $props.'(default)') { $exe = Join-Path $props.'(default)' 'python.exe' }
-            if ($exe -and (Test-Path $exe)) { return $exe }
+            if ($exe -and (Test-Path -LiteralPath $exe)) { return $exe }
         }
     }
     $guess = Join-Path $env:LOCALAPPDATA ("Programs\Python\Python3{0}\python.exe" -f $minor)
-    if (Test-Path $guess) { return $guess }
+    if (Test-Path -LiteralPath $guess) { return $guess }
     return $null
 }
 
@@ -157,6 +182,23 @@ function Latest-Python-Minor {
 }
 
 # ---------------------------------------------------------------------------------------------- font
+$TerminalFace = 'Google Sans Code Monospace'   # the name Windows Terminal (DirectWrite) knows the monospaced font by
+
+function Load-Fonts([string[]]$files) {
+    # Registry entries alone only take effect at the next sign-in; AddFontResource makes the font usable now.
+    try {
+        Add-Type -Namespace JobSearchSetup -Name Fonts -ErrorAction Stop -MemberDefinition @'
+[DllImport("gdi32.dll", CharSet = CharSet.Unicode)] public static extern int AddFontResourceW(string file);
+[DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr SendMessageTimeoutW(IntPtr hWnd, uint msg, UIntPtr wParam, IntPtr lParam, uint flags, uint timeout, out UIntPtr result);
+'@
+    } catch { }
+    try {
+        foreach ($f in $files) { [void][JobSearchSetup.Fonts]::AddFontResourceW($f) }
+        $r = [UIntPtr]::Zero
+        [void][JobSearchSetup.Fonts]::SendMessageTimeoutW([IntPtr]0xFFFF, 0x001D, [UIntPtr]::Zero, [IntPtr]::Zero, 2, 3000, [ref]$r)
+    } catch { }
+}
+
 function Install-GoogleSansCode {
     $api = 'https://api.github.com/repos/googlefonts/googlesans-code/releases/latest'
     try { $rel = Invoke-RestMethod $api -Headers @{ 'User-Agent' = 'jobsearch-setup' } -ErrorAction Stop }
@@ -168,13 +210,17 @@ function Install-GoogleSansCode {
     $regKey = 'HKCU:\Software\Microsoft\Windows NT\CurrentVersion\Fonts'
     $have = (Get-ItemProperty $regKey -ErrorAction SilentlyContinue).'Google Sans Code (TrueType)'
     $marker = Join-Path $fontDir 'GoogleSansCode.version.txt'
-    $haveTag = if (Test-Path $marker) { (Get-Content $marker -Raw).Trim() } else { '' }
+    $haveTag = if (Test-Path -LiteralPath $marker) { (Get-Content -LiteralPath $marker -Raw).Trim() } else { '' }
+    $haveFile = $have -and (Test-Path -LiteralPath $have)
     if ($CheckOnly) {
-        if ($have -and $haveTag -eq $tag) { Ok "Google Sans Code $tag (latest)"; Record 'Google Sans Code font' $tag 'latest' }
+        if ($haveFile -and $haveTag -eq $tag) { Ok "Google Sans Code $tag (latest)"; Record 'Google Sans Code font' $tag 'latest' }
         else { Info "Google Sans Code would install $tag"; Record 'Google Sans Code font' $tag 'would install' }
         return $true
     }
-    if ($have -and $haveTag -eq $tag -and (Test-Path $have)) { Ok "Google Sans Code $tag is already the latest"; Record 'Google Sans Code font' $tag 'latest'; return $true }
+    if ($haveFile -and $haveTag -eq $tag) {
+        Load-Fonts @(Get-ChildItem -LiteralPath $fontDir -Filter 'GoogleSansCode*.ttf' | ForEach-Object { $_.FullName })
+        Ok "Google Sans Code $tag is already the latest"; Record 'Google Sans Code font' $tag 'latest'; return $true
+    }
     Info "Installing Google Sans Code $tag for your account ..."
     $tmp = Join-Path $env:TEMP ("jobsearch-font-" + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $tmp | Out-Null
@@ -185,22 +231,32 @@ function Install-GoogleSansCode {
         $ttf = Get-ChildItem $tmp -Recurse -Filter '*.ttf' | Where-Object { $_.Name -match '\[wght\]' }
         if (-not $ttf) { $ttf = Get-ChildItem $tmp -Recurse -Filter '*.ttf' }
         New-Item -ItemType Directory -Force -Path $fontDir | Out-Null
+        $copied = 0
         foreach ($f in $ttf) {
             $dest = Join-Path $fontDir $f.Name
-            try { Copy-Item $f.FullName $dest -Force -ErrorAction Stop } catch { Warn "$($f.Name) is in use; close Windows Terminal and run setup again to update it." }
+            try { Copy-Item -LiteralPath $f.FullName -Destination $dest -Force -ErrorAction Stop }
+            catch { Warn "$($f.Name) is in use; close Windows Terminal and run setup again to update it." }
+            if (-not (Test-Path -LiteralPath $dest)) { continue }
             $face = if ($f.Name -match 'Italic') { 'Google Sans Code Italic (TrueType)' } else { 'Google Sans Code (TrueType)' }
             New-ItemProperty -Path $regKey -Name $face -Value $dest -PropertyType String -Force -ErrorAction Stop | Out-Null
+            $copied++
         }
-        Set-Content -Path $marker -Value $tag -Encoding ASCII
-        Ok "Google Sans Code $tag installed ($($ttf.Count) font files)"
-        Record 'Google Sans Code font' $tag 'installed / updated'
+        if ($copied -eq 0) {
+            Warn "The font files couldn't be copied to $fontDir; skipped."
+            Record 'Google Sans Code font' '-' 'install failed'
+            return $false
+        }
+        Set-Content -LiteralPath $marker -Value $tag -Encoding ASCII
+        Load-Fonts @(Get-ChildItem -LiteralPath $fontDir -Filter 'GoogleSansCode*.ttf' | ForEach-Object { $_.FullName })
+        Ok "Google Sans Code $tag installed ($copied font files in $fontDir)"
+        Record 'Google Sans Code font' $tag $(if ($have) { 'reinstalled' } else { 'installed' })
         return $true
     } catch {
         Warn "The font couldn't be installed: $($_.Exception.Message)"
         Record 'Google Sans Code font' '-' 'skipped'
         return $false
     } finally {
-        Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
     }
 }
 
@@ -209,25 +265,25 @@ function Set-TerminalFont {
         (Join-Path $env:LOCALAPPDATA 'Packages\Microsoft.WindowsTerminal_8wekyb3d8bbwe\LocalState\settings.json'),
         (Join-Path $env:LOCALAPPDATA 'Packages\Microsoft.WindowsTerminalPreview_8wekyb3d8bbwe\LocalState\settings.json'),
         (Join-Path $env:LOCALAPPDATA 'Microsoft\Windows Terminal\settings.json')
-    ) | Where-Object { Test-Path $_ }
-    if (-not $paths) { Info "Open Windows Terminal once, then run setup again to set its font (or: Settings > Defaults > Appearance > Font face)."; return }
+    ) | Where-Object { Test-Path -LiteralPath $_ }
+    if (-not $paths) { Info "Open Windows Terminal once, then run setup again to set its font (or: Settings > Defaults > Appearance > Font face > $TerminalFace)."; return }
     foreach ($p in $paths) {
         try {
-            $json = Get-Content $p -Raw -Encoding UTF8 -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
+            $json = Get-Content -LiteralPath $p -Raw -Encoding UTF8 -ErrorAction Stop | ConvertFrom-Json -ErrorAction Stop
         } catch {
-            Warn "Couldn't read $p (it has comments). Set it by hand: Settings > Defaults > Appearance > Font face > Google Sans Code."
+            Warn "Couldn't read $p (it has comments). Set it by hand: Settings > Defaults > Appearance > Font face > $TerminalFace."
             continue
         }
         if (-not $json.profiles) { $json | Add-Member -NotePropertyName profiles -NotePropertyValue ([pscustomobject]@{}) }
         if ($json.profiles -is [System.Array]) { Warn "Unusual Windows Terminal settings; set the font by hand."; continue }
         if (-not $json.profiles.defaults) { $json.profiles | Add-Member -NotePropertyName defaults -NotePropertyValue ([pscustomobject]@{}) -Force }
         if (-not $json.profiles.defaults.font) { $json.profiles.defaults | Add-Member -NotePropertyName font -NotePropertyValue ([pscustomobject]@{}) -Force }
-        if ($json.profiles.defaults.font.face -eq 'Google Sans Code') { Ok "Windows Terminal already uses Google Sans Code"; continue }
-        Copy-Item $p "$p.before-jobsearch.bak" -Force
-        $json.profiles.defaults.font | Add-Member -NotePropertyName face -NotePropertyValue 'Google Sans Code' -Force
+        if ($json.profiles.defaults.font.face -eq $TerminalFace) { Ok "Windows Terminal already uses $TerminalFace"; continue }
+        if (-not (Test-Path -LiteralPath "$p.before-jobsearch.bak")) { Copy-Item -LiteralPath $p -Destination "$p.before-jobsearch.bak" -Force }
+        $json.profiles.defaults.font | Add-Member -NotePropertyName face -NotePropertyValue $TerminalFace -Force
         $text = $json | ConvertTo-Json -Depth 64
         [System.IO.File]::WriteAllText($p, $text, (New-Object System.Text.UTF8Encoding $false))
-        Ok "Windows Terminal font set to Google Sans Code (backup: settings.json.before-jobsearch.bak)"
+        Ok "Windows Terminal font set to $TerminalFace (backup: settings.json.before-jobsearch.bak)"
     }
 }
 
@@ -256,11 +312,11 @@ $total = 5
 # 1. winget
 Step 1 $total 'Windows package manager (winget)'
 if ($SkipSystem) {
-    Info 'Skipped (/skip-system).'
+    Info 'Skipped (-SkipSystem).'
 } elseif (-not (Has-Winget)) {
     Bad 'winget is missing. Install "App Installer" from the Microsoft Store, then run this file again.'
     try { Start-Process 'ms-windows-store://pdp/?productid=9NBLGGH4NNS1' } catch { }
-    exit 1
+    Done 1
 } else {
     $wv = (winget --version) -replace '^v', ''
     Ok "winget $wv"
@@ -275,7 +331,7 @@ if ($SkipSystem) {
     if ($py) { Ok ("Using Python 3.{0} that's already installed: {1}" -f $py.Minor, $py.Exe) }
 } else {
     $minor = Latest-Python-Minor
-    if (-not $minor) { Bad "Couldn't find Python in winget."; exit 1 }
+    if (-not $minor) { Bad "Couldn't find Python in winget."; Done 1 }
     $custom = @('--scope', 'user', '--installer-type', 'burn', '--custom', 'Include_pip=1 Include_tcltk=1 Include_launcher=1 InstallLauncherAllUsers=0 Include_test=0')
     [void](Winget-Ensure ("Python.Python.3.{0}" -f $minor) ("Python 3.{0}" -f $minor) $custom)
     Refresh-Path
@@ -286,7 +342,7 @@ if ($CheckOnly -and -not $py) {
     Info ("Tkinter (file and folder windows) is checked once Python 3.{0} is installed" -f $minor)
     $pyVersion = "3.$minor (after install)"
 } else {
-    if (-not $py) { Bad 'No Python found. Run this file again without /skip-system.'; exit 1 }
+    if (-not $py) { Bad 'No Python found. Run this file again without -SkipSystem.'; Done 1 }
     $pyVersion = (& $py.Exe -c "import sys; print('%d.%d.%d' % sys.version_info[:3])").Trim()
     & $py.Exe -c "import tkinter" 2>$null
     if ($LASTEXITCODE -eq 0) { Ok "Tkinter (file and folder windows) works with Python $pyVersion" }
@@ -297,7 +353,7 @@ if ($CheckOnly -and -not $py) {
 # 3. Git, Windows Terminal, font
 Step 3 $total 'Git, Windows Terminal and the Google Sans Code font'
 if ($SkipSystem) {
-    Info 'Skipped (/skip-system).'
+    Info 'Skipped (-SkipSystem).'
 } else {
     [void](Winget-Ensure 'Git.Git' 'Git')
     [void](Winget-Ensure 'Microsoft.WindowsTerminal' 'Windows Terminal')
@@ -310,7 +366,7 @@ Step 4 $total 'Python packages (latest versions) in this project''s .venv'
 $venv = Join-Path $Root '.venv'
 $venvPy = Join-Path $venv 'Scripts\python.exe'
 if ($CheckOnly) {
-    if (Test-Path $venvPy) {
+    if (Test-Path -LiteralPath $venvPy) {
         $vv = (& $venvPy -c "import sys; print('%d.%d.%d' % sys.version_info[:3])").Trim()
         Ok ".venv exists (Python $vv)"
         $outdated = & $venvPy -m pip list --outdated --format=json 2>$null | ConvertFrom-Json
@@ -323,14 +379,14 @@ if ($CheckOnly) {
         }
     } else { Info ".venv would be created with Python $pyVersion and the latest packages installed"; Record 'Python packages (.venv)' '-' 'would install' }
 } else {
-    if (Test-Path $venvPy) {
+    if (Test-Path -LiteralPath $venvPy) {
         $vv = (& $venvPy -c "import sys; print('%d.%d' % sys.version_info[:2])").Trim()
-        if ($vv -ne ("3.{0}" -f $py.Minor)) { Info "Rebuilding .venv for Python $pyVersion (it used $vv) ..."; Remove-Item $venv -Recurse -Force }
+        if ($vv -ne ("3.{0}" -f $py.Minor)) { Info "Rebuilding .venv for Python $pyVersion (it used $vv) ..."; Remove-Item -LiteralPath $venv -Recurse -Force }
     }
-    if (-not (Test-Path $venvPy)) {
+    if (-not (Test-Path -LiteralPath $venvPy)) {
         Info "Creating .venv with Python $pyVersion ..."
         & $py.Exe -m venv $venv
-        if ($LASTEXITCODE -ne 0) { Bad 'Could not create .venv'; exit 1 }
+        if ($LASTEXITCODE -ne 0) { Bad 'Could not create .venv'; Done 1 }
     }
     & $venvPy -m pip install --upgrade --disable-pip-version-check --quiet pip | Out-Host
     Info ("Installing the latest " + (($Required | Where-Object { $_ -ne 'pip' }) -join ', ') + ' ...')
@@ -340,9 +396,14 @@ if ($CheckOnly) {
         & $venvPy -m pip install --upgrade --disable-pip-version-check --quiet $pkg 2>$null | Out-Null
         if ($LASTEXITCODE -ne 0) { Warn "$pkg (optional) isn't available for Python $pyVersion yet; the tool works without it." }
     }
+    $pyMinor = ($pyVersion -split '\.')[0..1] -join '.'
     foreach ($pkg in $Required + $Optional) {
         $ver = (& $venvPy -m pip show $pkg 2>$null | Select-String '^Version:') -replace 'Version:\s*', ''
-        if ($ver) { Ok "$pkg $ver"; Record $pkg $ver 'latest' }
+        if ($ver) {
+            $status = Package-Status $pkg $ver $pyMinor
+            if ($status -eq 'latest') { Ok "$pkg $ver" } else { Ok "$pkg $ver - $status" }
+            Record $pkg $ver $status
+        }
         elseif ($Optional -contains $pkg) { Record $pkg '-' 'optional, skipped' }
         else { Bad "$pkg is missing"; Record $pkg '-' 'failed' }
     }
@@ -372,17 +433,17 @@ Line ''
 Line '  Summary' Cyan
 Line ('  ' + ('-' * 76)) DarkBlue
 foreach ($r in $Results) {
-    $color = switch -Regex ($r.Status) { 'fail' { 'Red' } 'would|skipped|optional' { 'Yellow' } default { 'Green' } }
-    Write-Host ('  {0,-34} {1,-18} ' -f $r.Tool, $r.Version) -NoNewline
+    $color = switch -Regex ($r.Status) { '^failed' { 'Red' } 'would|skipped|optional|failed|newest for' { 'Yellow' } default { 'Green' } }
+    Write-Host ('  {0,-32} {1,-15} ' -f $r.Tool, $r.Version) -NoNewline
     Write-Host $r.Status -ForegroundColor $color
 }
 Line ''
 if ($Failed) {
-    Line '  Something needs attention (marked FAIL above). Fix it and run setup-windows.bat again.' Red
-    exit 1
+    Line '  Something needs attention (marked FAIL above). Fix it and run setup-windows.ps1 again.' Red
+    Done 1
 }
 if ($CheckOnly) {
-    Line '  Check finished. Run setup-windows.bat without /check to install or update.' Yellow
+    Line '  Check finished. Run setup-windows.ps1 without -Check to install or update.' Yellow
 } else {
     Line '  All set. Start a search by double-clicking run.bat' Green
     Line '  (or in a terminal:  .venv\Scripts\python -m jobsearch )' Gray
@@ -391,4 +452,4 @@ if ($CheckOnly) {
 }
 Line ''
 Line '  Built by Rahul Swargam  -  https://rahulswargam.online/' Yellow
-exit 0
+Done 0

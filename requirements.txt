@@ -1,4 +1,4 @@
-# Python packages Job Search uses. setup-windows.bat / setup-mac.command install the latest
+# Python packages Job Search uses. setup-windows.ps1 / setup-mac.command install the latest
 # versions of all of these into .venv; to do it by hand:  pip install --upgrade -r requirements.txt
 rich             # colours, panels, tables, live progress
 prompt_toolkit   # arrow-key menus and the source checkboxes
