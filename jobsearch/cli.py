@@ -2,20 +2,21 @@
 
     python -m jobsearch                       guided search: API key, resume, sources, save folder, then run
     python -m jobsearch --dry-run             show what would run and what it may cost; spends nothing
-    python -m jobsearch -y                    no menus: config.json, --resume and the registered key (scheduled runs)
+    python -m jobsearch -y                    no menus: config.json, --resume and APIFY_TOKEN (scheduled runs)
     python -m jobsearch --resume cv.pdf --role "DevOps Engineer" --location India --sources linkedin,naukri
     python -m jobsearch credits               credit left, and what each source costs and has used
-    python -m jobsearch change-key            register a different Apify API key
-    python -m jobsearch forget-key            remove the registered key from this computer
+    python -m jobsearch change-key            save a different Apify API key as APIFY_TOKEN
+    python -m jobsearch forget-key            remove APIFY_TOKEN from this computer
     python -m jobsearch profile               show what was read from your resume
     python -m jobsearch sources               list job sources, their actors and prices (offline)
     python -m jobsearch rescore <run folder>  re-score a past run (no Apify credits used)
 
-The API key is registered once in your system's password store (Windows Credential Manager or
-macOS Keychain), never in this project. Your resume is only read, never copied or saved.
+The API key is pasted once and saved as the APIFY_TOKEN environment variable for your user account
+(never in this project); every run reads it back from there. Your resume is only read, never saved.
 """
 import argparse
 import json
+import os
 import shutil
 import sys
 import threading
@@ -173,31 +174,27 @@ def enter_key():
             ui.ok(account_text(acct))
             try:
                 where = keystore.save(tok)
-                ui.ok(f"Key registered in {where}. You won't be asked for it again.")
+                ui.ok(f"Key saved as {where}. You won't be asked for it again.")
             except Exception as e:  # the search still works this time
-                ui.warn(f"Couldn't register the key ({e}); you'll be asked again next time.")
+                ui.warn(f"Couldn't save the key as APIFY_TOKEN ({e}); you'll be asked again next time.")
             return tok, acct
         ui.error("Apify rejected that key. Copy the whole key and try again." if attempt < 2 else "Apify rejected that key.")
     raise Quit("Three keys were rejected; nothing was spent.")
 
 
 def key_step(guided):
-    """Look for a registered key (or APIFY_TOKEN) first. If found: continue with it, or change it."""
+    """Read the key from the APIFY_TOKEN environment variable. If found: continue with it, or change it."""
     tok, where = keystore.find()
     if tok:
         acct = check_key(tok)
         if not acct:
-            if where == "saved":
-                keystore.forget()
-                msg = "The registered API key no longer works (it was deleted or regenerated on Apify)."
-            else:
-                msg = f"Apify rejected the key in {where}."
+            msg = f"The key in {where} no longer works (it was deleted or regenerated on Apify)."
             if not interactive():
                 raise Quit(f"{msg} Run  python -m jobsearch change-key  in a terminal.")
             ui.warn(msg)
             ui.gap()
             return enter_key()
-        ui.ok(Text.assemble(("API key found ", "bold"), (f"({keystore.store_name() if where == 'saved' else where})", MUTED)))
+        ui.ok(Text.assemble(("API key found ", "bold"), (f"(from {where})", MUTED)))
         ui.ok(account_text(acct))
         if guided:
             ui.gap()
@@ -567,12 +564,12 @@ def cmd_change_key(a):
 
 def cmd_forget_key(a):
     if keystore.forget():
-        ui.ok("The registered Apify API key was removed from this computer.")
+        ui.ok("The APIFY_TOKEN environment variable was removed. You'll be asked for a key next time.")
     else:
-        ui.info("There was no registered Apify API key.")
-    _, where = keystore.from_environment()
-    if where:
-        ui.info(f"A key is still set in {where}; it's used when no key is registered.")
+        ui.info("APIFY_TOKEN wasn't set.")
+    others = [n for n in keystore.ENV_NAMES[1:] if os.environ.get(n)]
+    if others:
+        ui.info(f"{others[0]} is still set in this terminal and will be used.")
 
 
 def cmd_init(a):
@@ -806,12 +803,12 @@ def build_parser():
         target.add_argument("--remote-only", action="store_true", help="remote jobs only, where the board supports it")
         target.add_argument("--only-new", action="store_true", help="ask actors for jobs new since your last run (cheaper on repeat runs)")
         target.add_argument("--dry-run", action="store_true", help="show the plan and cost estimate; spend nothing, no key needed")
-        target.add_argument("-y", "--yes", action="store_true", help="no menus: use config.json, --resume and the registered key")
+        target.add_argument("-y", "--yes", action="store_true", help="no menus: use config.json, --resume and APIFY_TOKEN")
     c = sub.add_parser("credits", help="credit left, cost per source, and what each source has used this month")
     c.add_argument("--config")
     c.add_argument("--per-source", type=int)
-    sub.add_parser("change-key", help="register a different Apify API key")
-    sub.add_parser("forget-key", help="remove the registered Apify API key from this computer")
+    sub.add_parser("change-key", help="save a different Apify API key as APIFY_TOKEN")
+    sub.add_parser("forget-key", help="remove the APIFY_TOKEN environment variable")
     pr = sub.add_parser("profile", help="show what was read from your resume")
     add_search_args(pr)
     sub.add_parser("sources", help="list sources, actors and prices (offline)")

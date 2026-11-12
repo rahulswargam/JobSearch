@@ -1,6 +1,5 @@
 rich>=13.7          # colours, panels, tables, live progress
 prompt_toolkit>=3.0 # arrow-key menus and the source checkboxes
-keyring>=24         # registers the Apify key in Windows Credential Manager / macOS Keychain
 pypdf>=4.0          # reads PDF resumes
 # Optional: better text layout from some PDFs (used first when installed)
 # PyMuPDF>=1.23

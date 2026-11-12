@@ -102,14 +102,16 @@ class Guided(unittest.TestCase):
         FakeApify.runs = []
         self.opened, self.folders = [], []
         env = {k: v for k, v in os.environ.items() if k not in keystore.ENV_NAMES}
-        env.update(JOBSEARCH_KEYSTORE="file", JOBSEARCH_HOME=str(self.dir / "home"))
+        env.update(JOBSEARCH_NO_MIGRATE="1")
         width = ui.console.width
         ui.console.width = 160
         self.addCleanup(setattr, ui.console, "width", width)
-        env_only = lambda: next(((os.environ[n], f"the {n} environment variable") for n in keystore.ENV_NAMES if os.environ.get(n)), (None, None))
+        self.saved = {}  # stands in for the user's saved environment variables (registry / ~/.zshrc)
         for p in (mock.patch.dict(os.environ, env, clear=True), mock.patch.object(cli, "Apify", FakeApify),
                   mock.patch.object(core, "Apify", FakeApify), mock.patch.object(ui, "interactive", lambda: True),
-                  mock.patch.object(keystore, "from_environment", env_only),
+                  mock.patch.object(keystore, "persist_get", lambda name: self.saved.get(name)),
+                  mock.patch.object(keystore, "persist_set", lambda name, value: self.saved.__setitem__(name, value)),
+                  mock.patch.object(keystore, "persist_delete", lambda name: self.saved.pop(name, None) is not None),
                   mock.patch.object(cli, "default_output_dir", lambda: self.downloads),
                   mock.patch.object(ui, "open_path", lambda p: self.folders.append(str(p))),
                   mock.patch.object(webbrowser, "open", lambda url, *x, **k: self.opened.append(url))):
@@ -154,7 +156,7 @@ class Guided(unittest.TestCase):
         ])
         self.assertEqual(code, 0, out)
         for expected in ("Built by", "Rahul Swargam", "Visit my website", "STEP 1 OF 4", "STEP 4 OF 4", "No API key found",
-                         "Key registered", "won't be asked for it again", "Signed in to Apify as tester", "REVIEW", "RESULTS"):
+                         "Key saved as the APIFY_TOKEN environment variable", "won't be asked for it again", "Signed in to Apify as tester", "REVIEW", "RESULTS"):
             self.assertIn(expected, out)
         for gone in ("Ctrl+click", ui.APIFY_KEY_PAGE, "rahulswargam.online", "looked for APIFY_TOKEN"):
             self.assertNotIn(gone, out)                                 # links are clickable labels, not printed URLs
@@ -165,7 +167,7 @@ class Guided(unittest.TestCase):
         cfg = json.loads((self.dir / "config.json").read_text(encoding="utf-8"))
         self.assertEqual(Path(cfg["output_dir"]), self.downloads)        # remembered for next time
         self.assertNotIn("resume", cfg)
-        self.assertEqual(keystore.load(), KEY)                          # registered once...
+        self.assertEqual(self.saved.get("APIFY_TOKEN"), KEY)            # saved as APIFY_TOKEN once...
         self.assertNotIn(KEY, self.project_files_text())                # ...outside the project and the output
         self.assertNotIn(KEY, out)
 
@@ -197,7 +199,7 @@ class Guided(unittest.TestCase):
         self.assertEqual(code, 0, out)
         self.assertIn("Signed in to Apify as second", out)
         self.assertEqual({r["token"] for r in FakeApify.runs}, {KEY2})
-        self.assertEqual(keystore.load(), KEY2)
+        self.assertEqual(self.saved.get("APIFY_TOKEN"), KEY2)
 
     def test_env_variable_is_found_without_asking(self):
         with mock.patch.dict(os.environ, {"APIFY_TOKEN": KEY}):
@@ -242,7 +244,7 @@ class Guided(unittest.TestCase):
         ])
         self.assertEqual(code, 0, out)
         self.assertEqual({r["token"] for r in FakeApify.runs}, {KEY})
-        self.assertEqual(keystore.load(), KEY)
+        self.assertEqual(self.saved.get("APIFY_TOKEN"), KEY)
 
     def test_over_cap_can_raise_it(self):
         keystore.save(KEY)
@@ -283,7 +285,7 @@ class Guided(unittest.TestCase):
             ("select", "Ready?", 1),
         ])
         self.assertIn("no longer works", out)
-        self.assertEqual(keystore.load(), KEY)
+        self.assertEqual(self.saved.get("APIFY_TOKEN"), KEY)
 
     def test_rejected_keys(self):
         code, out, _ = self.run_cli(["--resume", str(RESUME), "--sources", "naukri"], [
@@ -292,7 +294,7 @@ class Guided(unittest.TestCase):
         ])
         self.assertEqual(code, 1)
         self.assertIn("Three keys were rejected", out)
-        self.assertIsNone(keystore.load())
+        self.assertIsNone(self.saved.get("APIFY_TOKEN"))
 
     def test_scheduled_run_uses_registered_key(self):
         keystore.save(KEY)
@@ -311,7 +313,7 @@ class Guided(unittest.TestCase):
         keystore.save(KEY)
         code, out, _ = self.run_cli(["forget-key"], [])
         self.assertIn("removed", out)
-        self.assertIsNone(keystore.load())
+        self.assertIsNone(self.saved.get("APIFY_TOKEN"))
 
     def test_credits_command(self):
         keystore.save(KEY)
@@ -323,15 +325,44 @@ class Guided(unittest.TestCase):
 
 
 class Pieces(unittest.TestCase):
-    def test_keystore_file_roundtrip(self):
-        with tempfile.TemporaryDirectory() as d, mock.patch.dict(os.environ, {"JOBSEARCH_KEYSTORE": "file", "JOBSEARCH_HOME": d}):
-            self.assertIsNone(keystore.load())
-            keystore.save(KEY)
-            self.assertEqual(keystore.load(), KEY)
-            if os.name == "nt":
-                self.assertNotIn(KEY, (Path(d) / "apify-key.json").read_text(encoding="utf-8"))  # encrypted on Windows
-            self.assertTrue(keystore.forget())
-            self.assertIsNone(keystore.load())
+    def test_mac_shell_profile_set_read_remove(self):
+        with tempfile.TemporaryDirectory() as d, mock.patch.dict(os.environ, {"JOBSEARCH_PROFILE_HOME": d, "SHELL": "/bin/zsh"}):
+            rc = Path(d) / ".zshrc"
+            rc.write_text("export PATH=$HOME/bin:$PATH\n", encoding="utf-8")
+            self.assertIsNone(keystore._unix_get("APIFY_TOKEN"))
+            keystore._unix_set("APIFY_TOKEN", KEY)
+            keystore._unix_set("APIFY_TOKEN", KEY2)                    # changing the key replaces the line
+            text = rc.read_text(encoding="utf-8")
+            self.assertTrue(text.startswith("export PATH=$HOME/bin:$PATH\n"))  # the user's own lines are kept
+            self.assertEqual(text.count("export APIFY_TOKEN="), 1)
+            self.assertEqual(keystore._unix_get("APIFY_TOKEN"), KEY2)
+            self.assertTrue(keystore._unix_delete("APIFY_TOKEN"))
+            self.assertIsNone(keystore._unix_get("APIFY_TOKEN"))
+            self.assertEqual(rc.read_text(encoding="utf-8"), "export PATH=$HOME/bin:$PATH\n")
+        with mock.patch.dict(os.environ, {"JOBSEARCH_PROFILE_HOME": "/home/x", "SHELL": "/bin/bash"}), \
+                mock.patch.object(keystore.sys, "platform", "darwin"):
+            self.assertEqual(keystore.profile_file().name, ".bash_profile")
+
+    def test_saved_variable_is_read_back_and_set_for_this_run(self):
+        saved = {"APIFY_TOKEN": KEY}
+        env = {k: v for k, v in os.environ.items() if k not in keystore.ENV_NAMES}
+        with mock.patch.dict(os.environ, env, clear=True), mock.patch.object(keystore, "persist_get", saved.get):
+            tok, where = keystore.find()
+            self.assertEqual((tok, os.environ.get("APIFY_TOKEN")), (KEY, KEY))
+            self.assertIn("APIFY_TOKEN environment variable", where)
+
+    def test_key_from_older_version_is_moved_to_the_variable(self):
+        saved, old = {}, {("jobsearch-apify", "api-key"): KEY}
+        fake_keyring = type(sys)("keyring")
+        fake_keyring.get_password = lambda s, a: old.get((s, a))
+        fake_keyring.delete_password = lambda s, a: old.pop((s, a))
+        env = {k: v for k, v in os.environ.items() if k not in keystore.ENV_NAMES and k != "JOBSEARCH_NO_MIGRATE"}
+        with mock.patch.dict(os.environ, env, clear=True), mock.patch.dict(sys.modules, {"keyring": fake_keyring}), \
+                mock.patch.object(keystore, "persist_get", saved.get), mock.patch.object(keystore, "persist_set", saved.__setitem__):
+            tok, where = keystore.find()
+        self.assertEqual((tok, saved), (KEY, {"APIFY_TOKEN": KEY}))
+        self.assertEqual(old, {})                                       # removed from the old store
+        self.assertIn("moved", where)
 
     def test_parse_picks(self):
         cur = ["linkedin", "naukri"]
