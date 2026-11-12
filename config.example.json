@@ -1,5 +1,5 @@
 {
-  "_help": "Copy to config.json and edit, or run: python -m jobsearch init. Command-line options override these. Your resume is chosen in a file window each run (or with --resume) and is never stored here.",
+  "_help": "Copy to config.json and edit, or run: python -m jobsearch init. Command-line options override these. Your API key and resume location are not kept here: they're saved as the APIFY_TOKEN and JOBSEARCH_RESUME environment variables for your user account.",
   "roles": [
     "DevOps Engineer"
   ],

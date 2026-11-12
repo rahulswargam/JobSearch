@@ -1,24 +1,27 @@
-"""Your Apify API key lives in the APIFY_TOKEN environment variable: pasted once, read back every run.
+"""Remembered settings live in your user environment variables, outside this project:
 
-Saving sets it permanently for your user account, outside this project:
+    APIFY_TOKEN        your Apify API key (pasted once)
+    JOBSEARCH_RESUME   where your resume file is (its path only; the file itself is never copied)
+
+Saving sets a variable permanently for your user account:
     Windows       a user environment variable (System Properties > Environment Variables > User variables),
-                  the same as `setx APIFY_TOKEN ...`. Programs started afterwards see it.
-    macOS/Linux   an `export APIFY_TOKEN=...` line in your shell start-up file (~/.zshrc, ~/.bash_profile
+                  the same as `setx NAME value`. Programs started afterwards see it.
+    macOS/Linux   an `export NAME=...` line in your shell start-up file (~/.zshrc, ~/.bash_profile
                   or ~/.bashrc), so every new terminal has it.
 It is also set for the current run straight away. Reading checks the running environment first, then
-the saved value (so a terminal opened before the key was saved still finds it).
-The key is never written inside this repository, config.json, the output, or any log.
+the saved value (so a terminal opened before it was saved still finds it).
+Nothing here is ever written inside this repository, config.json, the output, or any log.
 """
 import os
 import re
+import shlex
 import sys
 from pathlib import Path
 
 NAME = "APIFY_TOKEN"
+RESUME = "JOBSEARCH_RESUME"
 ENV_NAMES = ("APIFY_TOKEN", "APIFY_API_TOKEN", "APIFY_API_KEY")
 IS_WINDOWS = os.name == "nt"
-BLOCK_START = "# >>> jobsearch: Apify API key >>>"
-BLOCK_END = "# <<< jobsearch <<<"
 
 
 # ---------------------------------------------------------------- Windows: user environment variables
@@ -66,40 +69,49 @@ def _win_delete(name):
 
 
 # ---------------------------------------------------------------- macOS / Linux: shell start-up file
+def _home():
+    return Path(os.environ.get("JOBSEARCH_PROFILE_HOME") or Path.home())
+
+
 def profile_file():
     """The start-up file your terminal reads: ~/.zshrc for zsh (the macOS default), else bash's."""
-    home = Path(os.environ.get("JOBSEARCH_PROFILE_HOME") or Path.home())
     shell = os.path.basename(os.environ.get("SHELL", "") or ("zsh" if sys.platform == "darwin" else "bash"))
     if shell == "zsh":
-        return home / ".zshrc"
+        return _home() / ".zshrc"
     if shell == "bash":
-        return home / (".bash_profile" if sys.platform == "darwin" else ".bashrc")
-    return home / ".profile"
+        return _home() / (".bash_profile" if sys.platform == "darwin" else ".bashrc")
+    return _home() / ".profile"
 
 
-def _block_re():
-    return re.compile(rf"\n?{re.escape(BLOCK_START)}\n.*?{re.escape(BLOCK_END)}\n?", re.S)
+def _block_re(name):
+    """This tool's block for one variable (and the older single-key block, for APIFY_TOKEN)."""
+    new = rf"# >>> jobsearch: {re.escape(name)} >>>\n.*?# <<< jobsearch: {re.escape(name)} <<<\n?"
+    old = r"# >>> jobsearch: Apify API key >>>\n.*?# <<< jobsearch <<<\n?"
+    return re.compile(rf"\n?(?:{new}{'|' + old if name == NAME else ''})", re.S)
 
 
 def _unix_get(name):
-    candidates = [profile_file()] + [Path(os.environ.get("JOBSEARCH_PROFILE_HOME") or Path.home()) / f
-                                     for f in (".zshrc", ".zprofile", ".bash_profile", ".bashrc", ".profile")]
+    candidates = [profile_file()] + [_home() / f for f in (".zshrc", ".zprofile", ".bash_profile", ".bashrc", ".profile")]
     for f in dict.fromkeys(candidates):
         try:
             text = f.read_text(encoding="utf-8", errors="ignore")
         except OSError:
             continue
-        for m in re.finditer(rf"^\s*export\s+{name}=(['\"]?)([^'\"\s#]+)\1", text, re.M):
-            return m.group(2)
+        for m in re.finditer(rf"^\s*export\s+{re.escape(name)}=(.*)$", text, re.M):
+            try:
+                parts = shlex.split(m.group(1), comments=True)
+            except ValueError:
+                continue
+            if parts and parts[0]:
+                return parts[0]
     return None
 
 
 def _unix_set(name, value):
     f = profile_file()
     old = f.read_text(encoding="utf-8") if f.is_file() else ""
-    body = _block_re().sub("\n", old).rstrip("\n")
-    safe = value.replace("'", "")
-    block = f"{BLOCK_START}\nexport {name}='{safe}'\n{BLOCK_END}\n"
+    body = _block_re(name).sub("\n", old).rstrip("\n")
+    block = f"# >>> jobsearch: {name} >>>\nexport {name}={shlex.quote(value)}\n# <<< jobsearch: {name} <<<\n"
     f.write_text((body + "\n\n" if body else "") + block, encoding="utf-8")
 
 
@@ -108,7 +120,7 @@ def _unix_delete(name):
     if not f.is_file():
         return False
     old = f.read_text(encoding="utf-8")
-    new = _block_re().sub("\n", old)
+    new = _block_re(name).sub("\n", old)
     if new == old:
         return False
     f.write_text(new.rstrip("\n") + "\n", encoding="utf-8")
@@ -128,42 +140,64 @@ def persist_delete(name):
     return _win_delete(name) if IS_WINDOWS else _unix_delete(name)
 
 
-def where_saved():
-    """Where the key is kept, in words, for messages."""
+def where(name=NAME):
+    """Where a variable is kept, in words, for messages."""
     if IS_WINDOWS:
-        return f"the {NAME} environment variable (your Windows user variables)"
-    return f"the {NAME} environment variable (in ~/{profile_file().name})"
+        return f"the {name} environment variable (your Windows user variables)"
+    return f"the {name} environment variable (in ~/{profile_file().name})"
 
 
-# ---------------------------------------------------------------- public
-def save(token):
-    """Save the key as APIFY_TOKEN for good, and for this run. Returns where it was saved."""
-    persist_set(NAME, token)
-    os.environ[NAME] = token
-    return where_saved()
+where_saved = where
 
 
-def forget():
-    """Remove the saved APIFY_TOKEN. Returns True if there was one."""
-    removed = persist_delete(NAME)
-    if os.environ.pop(NAME, None):
+# ---------------------------------------------------------------- any remembered setting
+def set_var(name, value):
+    """Save a variable for good, and for this run. Returns where it was saved."""
+    persist_set(name, value)
+    os.environ[name] = value
+    return where(name)
+
+
+def get_var(name):
+    """The variable from the running environment, else its saved value (also set for this run)."""
+    val = os.environ.get(name, "").strip()
+    if val:
+        return val
+    try:
+        val = persist_get(name)
+    except Exception:
+        val = None
+    if val:
+        os.environ[name] = val
+    return val or None
+
+
+def forget_var(name):
+    """Remove a saved variable. Returns True if there was one."""
+    try:
+        removed = persist_delete(name)
+    except Exception:
+        removed = False
+    if os.environ.pop(name, None):
         removed = True
     return bool(removed)
 
 
+# ---------------------------------------------------------------- the API key
+def save(token):
+    """Save the key as APIFY_TOKEN. Returns where it was saved."""
+    return set_var(NAME, token)
+
+
+def forget():
+    return forget_var(NAME)
+
+
 def find():
-    """(key, where it came from): the running environment first, then the saved variable."""
+    """(key, where it came from): APIFY_TOKEN (or similar names), running environment first, then saved."""
     for name in ENV_NAMES:
-        val = os.environ.get(name, "").strip()
+        val = get_var(name)
         if val:
-            return val, f"the {name} environment variable"
-    for name in ENV_NAMES:
-        try:
-            val = persist_get(name)
-        except Exception:
-            val = None
-        if val:
-            os.environ[name] = val  # this run can use it right away
             return val, f"the {name} environment variable"
     moved = _move_from_credential_manager()
     if moved:
@@ -192,3 +226,17 @@ def _move_from_credential_manager():
     except Exception:
         return tok  # still usable this run
     return tok
+
+
+# ---------------------------------------------------------------- the resume
+def saved_resume():
+    """The resume path saved last time (JOBSEARCH_RESUME), or None."""
+    return get_var(RESUME)
+
+
+def save_resume(path):
+    return set_var(RESUME, str(Path(path).expanduser().resolve()))
+
+
+def forget_resume():
+    return forget_var(RESUME)

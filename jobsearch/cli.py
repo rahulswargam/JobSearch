@@ -2,17 +2,18 @@
 
     python -m jobsearch                       guided search: API key, resume, sources, save folder, then run
     python -m jobsearch --dry-run             show what would run and what it may cost; spends nothing
-    python -m jobsearch -y                    no menus: config.json, --resume and APIFY_TOKEN (scheduled runs)
+    python -m jobsearch -y                    no menus: saved resume, APIFY_TOKEN and config.json (scheduled runs)
     python -m jobsearch --resume cv.pdf --role "DevOps Engineer" --location India --sources linkedin,naukri
     python -m jobsearch credits               credit left, and what each source costs and has used
     python -m jobsearch change-key            save a different Apify API key as APIFY_TOKEN
     python -m jobsearch forget-key            remove APIFY_TOKEN from this computer
+    python -m jobsearch forget-resume         remove the saved resume (JOBSEARCH_RESUME)
     python -m jobsearch profile               show what was read from your resume
     python -m jobsearch sources               list job sources, their actors and prices (offline)
     python -m jobsearch rescore <run folder>  re-score a past run (no Apify credits used)
 
-The API key is pasted once and saved as the APIFY_TOKEN environment variable for your user account
-(never in this project); every run reads it back from there. Your resume is only read, never saved.
+The API key and your resume's location are saved as user environment variables (APIFY_TOKEN and
+JOBSEARCH_RESUME), never in this project; every run reads them back. The resume file is never copied.
 """
 import argparse
 import json
@@ -232,12 +233,19 @@ def valid_resume(p):
     return str(p)
 
 
-def resume_step(cfg):
-    """Open the file window to choose the resume. Nothing about it is saved."""
-    start = Path(cfg["resume"]).expanduser().parent if cfg.get("resume") else Path.home()
+def changed_on(path):
+    try:
+        d = datetime.fromtimestamp(Path(path).stat().st_mtime)
+        return f"{d.day} {d:%b %Y}"
+    except OSError:
+        return "unknown"
+
+
+def choose_resume_file(start):
+    """The file window, with a fallback to typing the path. Returns a checked path."""
     ui.info("A file window is opening: choose your resume (PDF, Word or text).")
     while True:
-        chosen = ui.pick_file("Choose your resume", str(start) if start and start.is_dir() else None)
+        chosen = ui.pick_file("Choose your resume", str(start) if start and Path(start).is_dir() else None)
         if chosen is None:
             ui.warn("A file window can't open here.")
             chosen = ui.ask_text("Paste the full path to your resume:")
@@ -252,15 +260,60 @@ def resume_step(cfg):
                 continue
         path = valid_resume(chosen) if chosen else None
         if path:
-            ui.ok(Text.assemble(("Resume  ", "bold"), (Path(path).name, f"bold {BLUE}")))
-            ui.gap()
             return path
 
 
+def remember_resume(path):
+    if keystore.saved_resume() and same_path(keystore.saved_resume(), path):
+        return
+    try:
+        where = keystore.save_resume(path)
+        ui.ok(f"Saved as {where}, so next time you can reuse it with one key press.")
+    except Exception as e:  # still fine for this run
+        ui.warn(f"Couldn't remember this resume ({e}); you'll be asked to choose it next time.")
+
+
+def same_path(a, b):
+    try:
+        return Path(a).expanduser().resolve() == Path(b).expanduser().resolve()
+    except OSError:
+        return str(a) == str(b)
+
+
+def resume_step(cfg):
+    """Use the previous resume (saved in JOBSEARCH_RESUME) or choose an updated one, which then becomes the saved one."""
+    prev = keystore.saved_resume()
+    start = Path.home()
+    if prev and Path(prev).is_file():
+        p = Path(prev)
+        ui.ok(Text.assemble(("Previous resume found  ", "bold"), (p.name, f"bold {BLUE}"), (f"   last changed {changed_on(p)}", MUTED)))
+        ui.gap()
+        choice = ui.select("Which resume should this search use?", [
+            ("Use my previous resume", f"{p.name}  ·  last changed {changed_on(p)}"),
+            ("Use an updated resume", "Choose a newer or different file; it becomes your saved resume")], 0)
+        if choice == 0:
+            return str(p)
+        start = p.parent
+    elif prev:
+        ui.warn(f"Your previous resume is no longer at {prev} (it was moved, renamed or deleted). Please choose it again.")
+        ui.gap()
+        start = Path(prev).parent if Path(prev).parent.is_dir() else Path.home()
+    else:
+        ui.info("No previous resume found. Choose the resume to search with; it's remembered for next time.")
+    path = choose_resume_file(start)
+    ui.ok(Text.assemble(("Resume  ", "bold"), (Path(path).name, f"bold {BLUE}")))
+    remember_resume(path)
+    ui.gap()
+    return path
+
+
 def resume_path(cfg):
-    path = cfg.get("resume")
+    """--resume or config first, else the resume saved last time (JOBSEARCH_RESUME)."""
+    path = cfg.get("resume") or keystore.saved_resume()
     if not path:
-        raise Quit("No resume given. Use --resume PATH (or run python -m jobsearch in a terminal to pick one).")
+        raise Quit("No resume given. Use --resume PATH, or run  python -m jobsearch  in a terminal to choose one.")
+    if not Path(path).expanduser().is_file():
+        raise Quit(f"The resume isn't at {path} any more. Choose it again by running  python -m jobsearch  in a terminal.")
     return path
 
 
@@ -533,7 +586,7 @@ def cmd_sources(a):
 
 def cmd_profile(a):
     cfg = merge_args(load_config(a.config), a)
-    if not cfg.get("resume") and interactive():
+    if not cfg.get("resume") and not keystore.saved_resume() and interactive():
         cfg["resume"] = resume_step(cfg)
     show_profile(load_profile(cfg))
 
@@ -572,13 +625,20 @@ def cmd_forget_key(a):
         ui.info(f"{others[0]} is still set in this terminal and will be used.")
 
 
+def cmd_forget_resume(a):
+    if keystore.forget_resume():
+        ui.ok("The JOBSEARCH_RESUME environment variable was removed. You'll choose a resume next time.")
+    else:
+        ui.info("No resume was saved.")
+
+
 def cmd_init(a):
     if not interactive():
         raise Quit("init asks questions; run it in a terminal.")
     path = Path(a.config or "config.json")
     old = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
     cfg = {k: v for k, v in old.items() if k != "resume"}
-    ui.info(f"Creating {path}. Your resume is only read to suggest answers; its path is not saved.")
+    ui.info(f"Creating {path}. Your resume is read to suggest answers; its path goes in JOBSEARCH_RESUME, not in {path}.")
     prof = resume.build_profile(resume_step({}), old.get("profile"))
     show_profile(prof)
     cfg["roles"] = split_list(ui.ask_text("Roles to search, comma separated:", ", ".join(old.get("roles") or [prof.title])))
@@ -607,14 +667,20 @@ def cmd_search(a):
             ui.step(1, STEPS, "Apify API key")
         tok, acct = key_step(guided)
 
-    # Step 2 · Resume (file window) and what to search for
+    # Step 2 · Resume: the previous one, or an updated one (remembered in JOBSEARCH_RESUME)
     if guided:
         ui.step(2, STEPS, "Your resume")
         if a.resume:
-            ui.ok(f"Resume: {a.resume}  (from --resume)")
+            path = valid_resume(a.resume) or ""
+            if not path:
+                raise Quit(f"Can't use --resume {a.resume}")
+            cfg["resume"] = path
+            ui.ok(Text.assemble(("Resume  ", "bold"), (Path(path).name, f"bold {BLUE}"), ("   (from --resume)", MUTED)))
+            remember_resume(path)
+            ui.gap()
         else:
             cfg["resume"] = resume_step(cfg)
-    elif not cfg.get("resume") and interactive():  # e.g. --dry-run in a terminal
+    elif not cfg.get("resume") and not keystore.saved_resume() and interactive():  # e.g. --dry-run, nothing saved yet
         cfg["resume"] = resume_step(cfg)
     prof = load_profile(cfg)
     if guided:
@@ -706,7 +772,7 @@ def cmd_rescore(a):
         raise Quit(f"No raw results in {run_dir / 'raw'}")
     meta = json.loads((run_dir / "run.json").read_text(encoding="utf-8")) if (run_dir / "run.json").is_file() else {}
     cfg = merge_args(load_config(a.config), a)
-    if not cfg.get("resume") and interactive():
+    if not cfg.get("resume") and not keystore.saved_resume() and interactive():
         cfg["resume"] = resume_step(cfg)
     prof = load_profile(cfg)
     show_profile(prof)
@@ -779,7 +845,7 @@ def finish(raw, search, prof, prefs, run_dir, out, meta, a, acct=None):
 
 # ---------------------------------------------------------------- argparse
 def add_search_args(p):
-    p.add_argument("--resume", help="resume file (PDF, DOCX, TXT, MD); skips the file window")
+    p.add_argument("--resume", help="resume file (PDF, DOCX, TXT, MD); default: the resume saved last time")
     p.add_argument("--role", action="append", help="job title to search; repeat for more (default: title on your resume)")
     p.add_argument("--location", help="where to search, e.g. India, Hyderabad, Remote (default: your country)")
     p.add_argument("--prefer", action="append", help="a city you'd work in (scores higher); repeat for more")
@@ -803,12 +869,13 @@ def build_parser():
         target.add_argument("--remote-only", action="store_true", help="remote jobs only, where the board supports it")
         target.add_argument("--only-new", action="store_true", help="ask actors for jobs new since your last run (cheaper on repeat runs)")
         target.add_argument("--dry-run", action="store_true", help="show the plan and cost estimate; spend nothing, no key needed")
-        target.add_argument("-y", "--yes", action="store_true", help="no menus: use config.json, --resume and APIFY_TOKEN")
+        target.add_argument("-y", "--yes", action="store_true", help="no menus: use config.json, the saved resume and APIFY_TOKEN")
     c = sub.add_parser("credits", help="credit left, cost per source, and what each source has used this month")
     c.add_argument("--config")
     c.add_argument("--per-source", type=int)
     sub.add_parser("change-key", help="save a different Apify API key as APIFY_TOKEN")
     sub.add_parser("forget-key", help="remove the APIFY_TOKEN environment variable")
+    sub.add_parser("forget-resume", help="remove the saved resume (JOBSEARCH_RESUME environment variable)")
     pr = sub.add_parser("profile", help="show what was read from your resume")
     add_search_args(pr)
     sub.add_parser("sources", help="list sources, actors and prices (offline)")
@@ -829,7 +896,8 @@ def main(argv=None):
             pass
     a = build_parser().parse_args(argv)
     commands = {"sources": cmd_sources, "profile": cmd_profile, "init": cmd_init, "rescore": cmd_rescore, "credits": cmd_credits,
-                "change-key": cmd_change_key, "forget-key": cmd_forget_key}
+                "change-key": cmd_change_key, "forget-key": cmd_forget_key,
+                "forget-resume": cmd_forget_resume}
     try:
         commands.get(a.cmd, cmd_search)(a)
     except Quit as e:

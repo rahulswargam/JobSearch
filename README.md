@@ -21,7 +21,11 @@ It runs on its own: no AI service, no browser automation, no LinkedIn login. Eve
 It's a colourful guided run in four steps. You move with the arrow keys, and nothing is spent until you choose **Run the search**.
 
 1. **Apify API key.** It reads your key from the `APIFY_TOKEN` environment variable. If it finds one, it shows your account and the credit left. You choose **Continue with this key** or **Change API key** (for example, another account with credit left). If it doesn't find one, it says **No API key found** and offers to open the Apify key page in your browser. Paste the key once (it's hidden as you type) and it's saved as the `APIFY_TOKEN` environment variable, so you won't be asked again.
-2. **Your resume.** A file window opens to pick your resume (PDF, Word or text). It shows what it read (role, years of experience, city, skills) and what it will search for. You can accept that or change the role, location and cities.
+2. **Your resume.** If you've used a resume before, you get two choices:
+   - **Use my previous resume**: shows the file name and when it was last changed. One key press, no file window.
+   - **Use an updated resume**: a file window opens to pick a newer or different file (PDF, Word or text), which then becomes your saved resume.
+
+   The first time, the file window opens straight away. Then it shows what it read (role, years of experience, city, skills) and what it will search for. You can accept that or change the role, location and cities.
 3. **Job sources.** A list of all 14 actors with checkboxes. Space ticks a source, A ticks all, N clears. The line under the list updates as you tick, with how much will be debited and the credit you'll have left. Each row shows the most a run can cost, how many runs your credit covers, and what that actor used this month.
 4. **Where to save.** By default the page goes to `Downloads/JobSearch`. **Choose another folder** opens a folder window and fills in the path you pick, ready to confirm. Your choice is remembered for next time.
 
@@ -29,15 +33,20 @@ Then it shows the plan (each actor, how many jobs it may return, the most it can
 
 `--dry-run` shows the plan and the most it can cost without a key and without spending anything.
 
-## Your API key and resume stay off this repo
+## Where your key and resume are remembered
 
-This repo is public, so nothing personal is ever written into it:
+Both are saved as **environment variables for your user account** and read back every run. This repo is public, so nothing personal is ever written into it.
 
-- **API key:** pasted once and saved as the `APIFY_TOKEN` environment variable for your user account, then read back from there every run. It's never written to this folder, `config.json`, the output, or logs.
-  - **Windows:** a user environment variable, the same as `setx APIFY_TOKEN ...`. You can see it in System Properties → Environment Variables → User variables.
-  - **macOS / Linux:** an `export APIFY_TOKEN=...` line in your shell start-up file (`~/.zshrc`, `~/.bash_profile` or `~/.bashrc`), so every new terminal has it.
-  - Replace it with **Change API key** at the start of any run, or `python -m jobsearch change-key`. Remove it with `python -m jobsearch forget-key`.
-- **Resume:** picked in the file window each run (or given with `--resume`) and only read. It's never copied, and its path isn't saved.
+| Variable | Holds | Set when | Remove with |
+|---|---|---|---|
+| `APIFY_TOKEN` | Your Apify API key | You paste a key (first run, or **Change API key**) | `python -m jobsearch forget-key` |
+| `JOBSEARCH_RESUME` | Where your resume file is (its path; the file itself is never copied) | You choose a resume (first run, or **Use an updated resume**) | `python -m jobsearch forget-resume` |
+
+- **API key:** pasted once and saved as `APIFY_TOKEN`. It's never written to this folder, `config.json`, the output, or logs.
+  - **Windows:** user environment variables, the same as `setx`. You can see them in System Properties → Environment Variables → User variables.
+  - **macOS / Linux:** `export` lines in your shell start-up file (`~/.zshrc`, `~/.bash_profile` or `~/.bashrc`), so every new terminal has them.
+  - Replace the key with **Change API key** at the start of any run, or `python -m jobsearch change-key`.
+- **Resume:** only its location is saved, in `JOBSEARCH_RESUME`, stored the same way as the key. The file stays where it is and is only read.
 - `config.json` (your search settings and save folder) and `output/` are in `.gitignore`. So are `*.pdf`, `*.docx` and `.env` files, so a resume or key can't be committed by accident.
 
 You can also set `APIFY_TOKEN` yourself (for example with `setx`); it's found the same way, even in a terminal that was already open before it was set.
@@ -120,7 +129,7 @@ If the tool misreads your resume (`python -m jobsearch profile` shows what it fo
 
 | Option | What it does |
 |---|---|
-| `--resume PATH` | Resume file (PDF, DOCX, TXT, MD); skips the file window |
+| `--resume PATH` | Resume file (PDF, DOCX, TXT, MD); default is the resume saved last time |
 | `--role "Title"` | Role to search for; repeat for more |
 | `--location India` | Where to search. A country covers all of it; `Remote` searches remote jobs |
 | `--prefer City` | A city you'd work in (scores higher); repeat for more |
@@ -133,17 +142,17 @@ If the tool misreads your resume (`python -m jobsearch profile` shows what it fo
 | `--only-new` | Only jobs new since your last run (for actors that support it) |
 | `--dry-run` | Show the plan and actor inputs; spend nothing, no key needed |
 | `--out FOLDER` | Where to save the page, skipping step 4 |
-| `-y` | No menus: uses `config.json`, `--resume` and `APIFY_TOKEN` (for scheduled runs) |
+| `-y` | No menus: uses the saved resume, `APIFY_TOKEN` and `config.json` (for scheduled runs) |
 | `--open` | Open the page when done |
 
-Other commands: `credits`, `change-key`, `forget-key`, `init`, `profile`, `sources`, `rescore <run folder>`.
+Other commands: `credits`, `change-key`, `forget-key`, `forget-resume`, `init`, `profile`, `sources`, `rescore <run folder>`.
 
 ## Run it every morning (optional)
 
-Run one search by hand first, so your key is saved as `APIFY_TOKEN` and your save folder is remembered. Then create a Windows Task Scheduler task (or a macOS cron job) that runs Python with these arguments, starting in this folder:
+Run one search by hand first, so your key, resume and save folder are remembered. Then create a Windows Task Scheduler task (or a macOS cron job) that runs Python with these arguments, starting in this folder:
 
 ```
--m jobsearch -y --resume "C:\path\to\resume.pdf"
+-m jobsearch -y
 ```
 
 ## For the web app later
@@ -175,8 +184,8 @@ The tests run offline and never call Apify. They cover:
 
 - resume reading, every actor's output format, scoring and de-duplication
 - the cost caps and the page
-- the guided run with a fake Apify account and stand-in environment variables: key found / saved once / changed, the resume window, ticking sources, the save folder, budget and credit checks
-- saving the key in a macOS shell start-up file, and moving a key saved by an older version
+- the guided run with a fake Apify account and stand-in environment variables: key found / saved once / changed, previous vs updated resume, ticking sources, the save folder, budget and credit checks
+- saving the key and the resume path in a macOS shell start-up file (including paths with spaces), and moving a key saved by an older version
 - the macOS file and folder windows (the AppleScript they run)
 - the real arrow-key menus, driven with simulated keystrokes
 
@@ -185,7 +194,7 @@ The tests run offline and never call Apify. They cover:
 | Path | What it is |
 |---|---|
 | `jobsearch/cli.py` | Commands and the guided steps |
-| `jobsearch/keystore.py` | Saves and reads the API key as the `APIFY_TOKEN` environment variable (Windows + macOS) |
+| `jobsearch/keystore.py` | Saves and reads `APIFY_TOKEN` and `JOBSEARCH_RESUME` as user environment variables (Windows + macOS) |
 | `jobsearch/ui.py` | Colours, banner, arrow-key menus, checkboxes, file and folder windows (Windows + macOS) |
 | `jobsearch/core.py` | Pipeline: plan, run actors, collect, de-duplicate |
 | `jobsearch/sources.py` | One adapter per Apify actor |

@@ -67,6 +67,8 @@ class Script:
 
     def select(self, question, options, default=0, answer_label=None):
         self.options = options
+        if "Which resume" in question:
+            self.resume_options = options
         return self.take("select", question)
 
     def checkbox(self, question, columns, rows, selected, footer, min_selected=1, answer=None):
@@ -168,14 +170,18 @@ class Guided(unittest.TestCase):
         self.assertEqual(Path(cfg["output_dir"]), self.downloads)        # remembered for next time
         self.assertNotIn("resume", cfg)
         self.assertEqual(self.saved.get("APIFY_TOKEN"), KEY)            # saved as APIFY_TOKEN once...
-        self.assertNotIn(KEY, self.project_files_text())                # ...outside the project and the output
+        self.assertTrue(Path(self.saved.get("JOBSEARCH_RESUME")).samefile(RESUME))  # ...and the resume path as JOBSEARCH_RESUME
+        self.assertIn("No previous resume found", out)
+        self.assertIn("Saved as the JOBSEARCH_RESUME environment variable", out)
+        for private in (KEY, str(RESUME), str(RESUME).replace("\\", "\\\\")):  # never in config.json or the output files
+            self.assertNotIn(private, self.project_files_text())
         self.assertNotIn(KEY, out)
 
-        # Second run: the key is found and not asked for; only the option to change it
+        # Second run: key and resume are found; one key press each to reuse them
         FakeApify.runs = []
         code, out, s = self.run_cli(["--sources", "naukri"], [
             ("select", "Which API key should this search use?", 0),
-            ("file", "Choose your resume", str(RESUME)),
+            ("select", "Which resume should this search use?", 0),     # Use my previous resume
             ("select", "Search settings", 0),
             ("select", "Where should the job links page be saved?", 0),
             ("select", "Ready?", 0),
@@ -183,8 +189,57 @@ class Guided(unittest.TestCase):
         ])
         self.assertEqual(code, 0, out)
         self.assertIn("API key found", out)
-        self.assertNotIn("Paste your Apify API key", "".join(q for _, q in s.asked))
+        self.assertIn("Previous resume found", out)
+        asked = "".join(q for _, q in s.asked)
+        self.assertNotIn("Paste your Apify API key", asked)
+        self.assertNotIn("Choose your resume", asked)                   # no file window needed
         self.assertEqual([o[0] for o in s.options], ["Open the job links page in my browser", "Open the folder", "Done"])
+
+    def test_resume_options_and_choosing_an_updated_one(self):
+        keystore.save(KEY)
+        keystore.save_resume(RESUME)
+        newer = self.dir / "updated_resume.txt"
+        newer.write_text(RESUME.read_text(encoding="utf-8").replace("6 years", "7 years"), encoding="utf-8")
+        code, out, s = self.run_cli(["--sources", "naukri", "--out", str(self.dir / "out")], [
+            ("select", "Which API key", 0),
+            ("select", "Which resume should this search use?", 1),     # Use an updated resume
+            ("file", "Choose your resume", str(newer)),
+            ("select", "Search settings", 0),
+            ("select", "Ready?", 1),
+        ])
+        self.assertEqual(code, 1)                                        # cancelled at Ready, after the resume step
+        labels = [o[0] for o in s.resume_options]
+        self.assertEqual(labels, ["Use my previous resume", "Use an updated resume"])
+        self.assertIn(RESUME.name, s.resume_options[0][1])               # shows which file and when it last changed
+        self.assertIn("last changed", s.resume_options[0][1])
+        self.assertTrue(Path(self.saved["JOBSEARCH_RESUME"]).samefile(newer))  # the updated one is now remembered
+        self.assertIn("7 yrs total", out)                                # and it's the one that was read
+
+    def test_previous_resume_moved_asks_again(self):
+        keystore.save(KEY)
+        keystore.save_resume(self.dir / "deleted.pdf")
+        code, out, _ = self.run_cli(["--sources", "naukri", "--out", str(self.dir / "out")], [
+            ("select", "Which API key", 0),
+            ("file", "Choose your resume", str(RESUME)),
+            ("select", "Search settings", 0),
+            ("select", "Ready?", 1),
+        ])
+        self.assertIn("no longer at", out)
+        self.assertTrue(Path(self.saved["JOBSEARCH_RESUME"]).samefile(RESUME))
+
+    def test_scheduled_run_uses_saved_resume(self):
+        keystore.save(KEY)
+        keystore.save_resume(RESUME)
+        with mock.patch.object(ui, "interactive", lambda: False):
+            code, out, _ = self.run_cli(["-y", "--sources", "naukri", "--out", str(self.dir / "out")], [])
+        self.assertEqual(code, 0, out)
+        self.assertIn(RESUME.name, out)
+
+    def test_forget_resume(self):
+        keystore.save_resume(RESUME)
+        code, out, _ = self.run_cli(["forget-resume"], [])
+        self.assertIn("JOBSEARCH_RESUME environment variable was removed", out)
+        self.assertNotIn("JOBSEARCH_RESUME", self.saved)
 
     def test_change_api_key_replaces_the_registered_one(self):
         keystore.save(KEY)
@@ -325,6 +380,16 @@ class Guided(unittest.TestCase):
 
 
 class Pieces(unittest.TestCase):
+    def test_mac_profile_keeps_paths_with_spaces_and_quotes(self):
+        with tempfile.TemporaryDirectory() as d, mock.patch.dict(os.environ, {"JOBSEARCH_PROFILE_HOME": d, "SHELL": "/bin/zsh"}):
+            tricky = "/Users/me/My Documents/Rahul's CV (2026).pdf"
+            keystore._unix_set("JOBSEARCH_RESUME", tricky)
+            keystore._unix_set("APIFY_TOKEN", KEY)
+            self.assertEqual(keystore._unix_get("JOBSEARCH_RESUME"), tricky)
+            self.assertEqual(keystore._unix_get("APIFY_TOKEN"), KEY)
+            self.assertTrue(keystore._unix_delete("JOBSEARCH_RESUME"))  # each variable has its own block
+            self.assertEqual(keystore._unix_get("APIFY_TOKEN"), KEY)
+
     def test_mac_shell_profile_set_read_remove(self):
         with tempfile.TemporaryDirectory() as d, mock.patch.dict(os.environ, {"JOBSEARCH_PROFILE_HOME": d, "SHELL": "/bin/zsh"}):
             rc = Path(d) / ".zshrc"
