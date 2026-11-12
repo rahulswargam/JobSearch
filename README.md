@@ -8,15 +8,39 @@ It runs on its own: no AI service, no browser automation, no LinkedIn login. Eve
 
 ## Setup (Windows and macOS)
 
-1. Python 3.10 or newer: [python.org/downloads](https://www.python.org/downloads/). On a Mac, use `python3` and `pip3` in the commands below.
-2. `pip install -r requirements.txt` (rich, prompt_toolkit, pypdf).
-3. An Apify account. The free plan includes $5 of credit a month.
+One file per system installs everything Job Search needs, always at the **latest version**, then checks that it works. Run it again any time to update everything.
+
+| | Windows 10 / 11 | macOS (Apple Silicon or Intel) |
+|---|---|---|
+| Setup file | Double-click **`setup-windows.bat`** | Double-click **`setup-mac.command`** (first time: right-click → Open), or `bash setup-mac.command` |
+| Preview only, no changes | `setup-windows.bat /check` | `bash setup-mac.command --check` |
+
+What they install:
+
+| Tool | What it's for | Windows | macOS |
+|---|---|---|---|
+| Package manager | installs and updates everything below | winget (built in) | Homebrew (installed if missing) |
+| Python 3 (newest) | runs the tool, with pip and venv | Python 3.x from python.org via winget | `python@3.x` from Homebrew |
+| Tkinter | the resume file window and the save-folder window | included with Python | `python-tk@3.x` |
+| rich | colours, tables, live progress | in `.venv` | in `.venv` |
+| prompt_toolkit | arrow-key menus and checkboxes | in `.venv` | in `.venv` |
+| pypdf | reads PDF resumes | in `.venv` | in `.venv` |
+| certifi | up-to-date HTTPS certificates for the Apify API | in `.venv` | in `.venv` |
+| PyMuPDF (optional) | better text from some PDF resumes | in `.venv` | in `.venv` |
+| keyring (optional) | moves a key saved by an older version | in `.venv` | in `.venv` |
+| Git | downloads and updates this project | Git for Windows | `git` |
+| Terminal | full colours and clickable links | Windows Terminal | Terminal (built in) |
+| Google Sans Code | the terminal font | installed for your account; can set it in Windows Terminal | Homebrew font; set it in Terminal → Settings → Profiles → Text |
+| Web browser | opens the job links page | your default (Edge is built in) | your default (Safari is built in) |
+| Apify account | runs the job searches | free at [console.apify.com](https://console.apify.com); the first run asks for its API key | same |
+
+The Python packages go into a `.venv` folder inside this project (ignored by Git), so they never clash with other Python projects. `run.bat` and `run.command` use it automatically.
 
 ## Running a search
 
 | | Windows | macOS |
 |---|---|---|
-| Start | `python -m jobsearch`, or double-click `run.bat` | `python3 -m jobsearch`, or double-click `run.command` (the first time: right-click → Open) |
+| Start | Double-click `run.bat`, or `.venv\Scripts\python -m jobsearch` | Double-click `run.command` (first time: right-click → Open), or `.venv/bin/python -m jobsearch` |
 
 It's a colourful guided run in four steps. You move with the arrow keys, and nothing is spent until you choose **Run the search**.
 
@@ -188,6 +212,7 @@ The tests run offline and never call Apify. They cover:
 - saving the key and the resume path in a macOS shell start-up file (including paths with spaces), and moving a key saved by an older version
 - the macOS file and folder windows (the AppleScript they run)
 - the real arrow-key menus, driven with simulated keystrokes
+- the setup files: they install every package the code uses and agree with `requirements.txt`
 
 ## Project layout
 
@@ -203,6 +228,8 @@ The tests run offline and never call Apify. They cover:
 | `jobsearch/scoring.py` | Match, likelihood, overall fit, chance |
 | `jobsearch/skills.py`, `roles.py` | Skill dictionary, role families, cities |
 | `jobsearch/report.py`, `templates/` | The apply-links page, CSV and JSON |
+| `setup-windows.bat`, `setup-mac.command` | Install or update every tool to the latest version |
+| `run.bat`, `run.command` | Start a search |
 
 ---
 

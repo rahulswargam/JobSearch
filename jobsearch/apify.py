@@ -4,6 +4,7 @@ Runs an actor with a hard spending cap, waits for it, and reads its dataset.
 Docs: https://docs.apify.com/api/v2
 """
 import json
+import ssl
 import time
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
@@ -11,6 +12,18 @@ from urllib.request import Request, urlopen
 
 API = "https://api.apify.com/v2"
 TERMINAL = {"SUCCEEDED", "FAILED", "ABORTED", "TIMED-OUT"}
+
+
+def _tls():
+    """Use certifi's up-to-date certificates when installed (python.org builds on macOS ship without any)."""
+    try:
+        import certifi
+        return ssl.create_default_context(cafile=certifi.where())
+    except Exception:
+        return None
+
+
+TLS = _tls()
 
 
 class ApifyError(Exception):
@@ -30,7 +43,7 @@ class Apify:
         req = Request(url, data=data, method=method, headers={
             "Authorization": f"Bearer {self.token}", "Content-Type": "application/json", "User-Agent": "jobsearch-cli/1.0"})
         try:
-            with urlopen(req, timeout=timeout or self.timeout) as r:
+            with urlopen(req, timeout=timeout or self.timeout, context=TLS) as r:
                 raw = r.read()
                 return json.loads(raw) if raw else None
         except HTTPError as e:

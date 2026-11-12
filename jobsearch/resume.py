@@ -51,7 +51,10 @@ def read_text(path):
 def _pdf_text(p):
     errors = []
     try:
-        import fitz  # PyMuPDF keeps the layout best; optional
+        try:
+            import pymupdf as fitz  # PyMuPDF keeps the layout best; optional
+        except ImportError:
+            import fitz  # older PyMuPDF releases
         with fitz.open(str(p)) as doc:
             text = "\n".join(page.get_text() for page in doc)
         if text.strip():

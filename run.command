@@ -1,6 +1,12 @@
 #!/bin/bash
 # macOS: double-click this file in Finder to start a search (first time: right-click > Open).
-cd "$(dirname "$0")"
-python3 -m jobsearch "$@"
+# Uses the .venv made by setup-mac.command; falls back to python3 on your PATH.
+cd "$(dirname "$0")" || exit 1
+if [ -x ".venv/bin/python" ]; then
+  .venv/bin/python -m jobsearch "$@"
+else
+  echo "Tip: run setup-mac.command first to install everything Job Search needs."
+  python3 -m jobsearch "$@"
+fi
 echo
 read -n 1 -s -r -p "Press any key to close..."
