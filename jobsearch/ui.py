@@ -1,13 +1,17 @@
 """The colourful terminal UI: banner, step headers, arrow-key menus, a checkbox list with a live
-cost line, hidden key entry, and the file picker.
+cost line, hidden key entry, and the file and folder pickers. Works on Windows and macOS.
 
 Colours come from `rich` (output) and `prompt_toolkit` (menus). When the program isn't running
 in a terminal (tests, scheduled tasks), menus return their default and output is plain text.
 Fonts are chosen by your terminal app, not by programs: see the README for using Google Sans Code.
 """
+import os
+import subprocess
 import sys
+from pathlib import Path
 
 from rich import box
+from rich.align import Align
 from rich.console import Console, Group
 from rich.panel import Panel
 from rich.table import Table
@@ -16,10 +20,12 @@ from rich.text import Text
 AUTHOR = "Rahul Swargam"
 WEBSITE = "https://rahulswargam.online/"
 APIFY_KEY_PAGE = "https://console.apify.com/settings/integrations"
+IS_MAC = sys.platform == "darwin"
+IS_WINDOWS = os.name == "nt"
 
 BLUE, RED, YELLOW, GREEN = "#4285F4", "#EA4335", "#FBBC05", "#34A853"
 PURPLE, MUTED = "#A142F4", "grey58"
-STEP_COLOURS = [BLUE, RED, "#F29900", GREEN]
+STEP_COLOURS = [BLUE, RED, "#F29900", GREEN, PURPLE]
 
 console = Console(highlight=False)
 
@@ -75,46 +81,69 @@ def gradient(text, colours=(BLUE, PURPLE, RED, YELLOW, GREEN), bold=True):
     return out
 
 
-def link(url, label=None, style=BLUE):
-    """Clickable text in terminals that support links (Windows Terminal, iTerm2, VS Code...)."""
-    return Text(label or url, style=f"underline {style} link {url}")
+def link(url, label, style=BLUE):
+    """Text that opens `url` when clicked, in terminals that support links."""
+    return Text(label, style=f"underline {style} link {url}")
+
+
+def website_link():
+    return link(WEBSITE, "Visit my website ↗", GREEN)
 
 
 def banner():
     art = "\n".join(_art("JOB SEARCH"))
-    title = gradient(art) if console.width >= 84 else gradient("J O B   S E A R C H")
-    tagline = Text("Fresh jobs from 14 job boards, ranked against your resume", style="bold")
-    sub = Text("LinkedIn · Naukri · Instahyre · Hirist · Wellfound · Upwork · remote boards · company career sites", style=MUTED)
-    visit = Text.assemble(("Visit  ", MUTED), link(WEBSITE, WEBSITE.replace("https://", "").rstrip("/") + "  ↗", GREEN))
-    heading = Text.assemble((" ✦ Built by ", "bold white"), (AUTHOR, f"bold {YELLOW}"), (" ✦ ", "bold white"))
+    title = gradient(art) if console.width >= 90 else gradient("J O B   S E A R C H")
+    body = Group(
+        Align.center(title), Text(),
+        Align.center(Text("Fresh jobs from 14 job boards, ranked against your resume", style="bold")),
+        Align.center(Text("LinkedIn · Naukri · Instahyre · Hirist · Wellfound · Upwork · remote boards · company career sites", style=MUTED)),
+    )
+    heading = Text.assemble((" ✦ Built by ", "bold"), (AUTHOR, f"bold {YELLOW}"), (" ✦ ", "bold"))
+    footer = Text.assemble((" Powered by Apify  ·  ", MUTED), website_link(), (" ", ""))
     console.print()
-    console.print(Panel(Group(title, Text(), tagline, sub, Text(), visit), title=heading, title_align="center",
-                        subtitle=Text.assemble(("Powered by Apify · ", MUTED), link(WEBSITE, "rahulswargam.online", GREEN)),
-                        border_style=BLUE, box=box.ROUNDED, padding=(1, 3), expand=False))
+    console.print(Align.center(Panel(body, title=heading, title_align="center", subtitle=footer, subtitle_align="center",
+                                     border_style=BLUE, box=box.ROUNDED, padding=(1, 4), expand=False)))
+    console.print()
+
+
+def credit_footer():
+    console.print()
+    console.print(Align.center(Text.assemble(("Built by ", MUTED), (AUTHOR, f"bold {YELLOW}"), ("   ·   ", MUTED), website_link())))
+    console.print()
 
 
 # ---------------------------------------------------------------- printing helpers
 def step(n, total, title, colour=None):
     c = colour or STEP_COLOURS[(n - 1) % len(STEP_COLOURS)]
     console.print()
-    console.print(Text.assemble((f" STEP {n} OF {total} ", f"bold white on {c}"), ("  " + title, f"bold {c}")))
+    console.print()
+    console.print(Text.assemble((f" STEP {n} OF {total} ", f"bold white on {c}"), ("   " + title, f"bold {c}")))
     console.rule(style=c, characters="─")
+    console.print()
+
+
+def _line(mark, colour, msg):
+    console.print(Text.assemble((f"  {mark}  ", f"bold {colour}"), Text.from_markup(msg) if isinstance(msg, str) else msg))
 
 
 def ok(msg):
-    console.print(Text.assemble(("  ✔ ", f"bold {GREEN}"), Text.from_markup(msg) if isinstance(msg, str) else msg))
+    _line("✔", GREEN, msg)
 
 
 def info(msg):
-    console.print(Text.assemble(("  • ", BLUE), Text.from_markup(msg) if isinstance(msg, str) else msg))
+    _line("•", BLUE, msg)
 
 
 def warn(msg):
-    console.print(Text.assemble(("  ! ", "bold #F29900"), Text.from_markup(msg) if isinstance(msg, str) else msg))
+    _line("!", "#F29900", msg)
 
 
 def error(msg):
-    console.print(Text.assemble(("  ✘ ", f"bold {RED}"), Text.from_markup(msg) if isinstance(msg, str) else msg))
+    _line("✘", RED, msg)
+
+
+def gap():
+    console.print()
 
 
 def money(x):
@@ -135,7 +164,7 @@ def _app(render, kb, erase=True):
     from prompt_toolkit.layout import Layout, Window
     from prompt_toolkit.layout.controls import FormattedTextControl
     from prompt_toolkit.styles import Style
-    return Application(layout=Layout(Window(FormattedTextControl(render, focusable=True), always_hide_cursor=True, wrap_lines=False)),
+    return Application(layout=Layout(Window(FormattedTextControl(render, focusable=True), always_hide_cursor=True, wrap_lines=True)),
                        key_bindings=kb, style=Style.from_dict(PT_STYLE), full_screen=False, erase_when_done=erase, mouse_support=False)
 
 
@@ -149,8 +178,13 @@ def _common_keys(kb):
         e.app.exit(exception=Cancelled())
 
 
+def _answered(question, answer):
+    console.print(Text.assemble(("  ✔  ", f"bold {GREEN}"), (question + "  ", "bold"), (answer, f"bold {BLUE}")))
+    console.print()
+
+
 def select(question, options, default=0, answer_label=None):
-    """Arrow-key menu. options: list of labels or (label, description). Returns the chosen index."""
+    """Arrow-key menu. options: labels or (label, description). Returns the chosen index."""
     opts = [o if isinstance(o, tuple) else (o, "") for o in options]
     if not interactive():
         return default
@@ -160,12 +194,10 @@ def select(question, options, default=0, answer_label=None):
     _common_keys(kb)
 
     @kb.add("up")
-    @kb.add("k")
     def _(e):
         cur[0] = (cur[0] - 1) % len(opts)
 
     @kb.add("down")
-    @kb.add("j")
     @kb.add("tab")
     def _(e):
         cur[0] = (cur[0] + 1) % len(opts)
@@ -179,21 +211,23 @@ def select(question, options, default=0, answer_label=None):
         def _(e, n=n):
             e.app.exit(result=n - 1)
 
+    roomy = any(desc for _, desc in opts)
+
     def render():
-        out = [("class:qmark", "  ? "), ("class:q", question + "\n")]
+        out = [("class:qmark", "  ?  "), ("class:q", question + "\n\n")]
         for i, (label, desc) in enumerate(opts):
             here = i == cur[0]
-            out += [("class:pointer" if here else "", "   ❯ " if here else "     "),
-                    ("class:sel" if here else "class:opt", f"{i + 1}. {label}")]
+            out += [("class:pointer" if here else "", "     ❯  " if here else "        "),
+                    ("class:sel" if here else "class:opt", f"{i + 1}.  {label}\n")]
             if desc:
-                out.append(("class:desc", f"   {desc}"))
-            out.append(("", "\n"))
-        out.append(("class:hint", "     ↑/↓ to move · Enter to choose · or press the number"))
+                out.append(("class:desc", f"            {desc}\n"))
+            if roomy and i < len(opts) - 1:
+                out.append(("", "\n"))
+        out.append(("class:hint", "\n        ↑/↓ move  ·  Enter choose  ·  or press the number"))
         return out
 
     choice = _app(render, kb).run()
-    console.print(Text.assemble(("  ✔ ", f"bold {GREEN}"), (question + " ", "bold"),
-                                (answer_label or opts[choice][0], f"bold {BLUE}")))
+    _answered(question, answer_label or opts[choice][0])
     return choice
 
 
@@ -223,8 +257,7 @@ def checkbox(question, columns, rows, selected, footer, min_selected=1, answer=N
     @kb.add("right")
     @kb.add("x")
     def _(e):
-        k = order[cur[0]]
-        sel.symmetric_difference_update({k})
+        sel.symmetric_difference_update({order[cur[0]]})
         msg[0] = ""
 
     @kb.add("a")
@@ -248,18 +281,18 @@ def checkbox(question, columns, rows, selected, footer, min_selected=1, answer=N
         return text.rjust(width) if align == "right" else text.ljust(width)
 
     def render():
-        out = [("class:qmark", "  ? "), ("class:q", question + "\n"),
-               ("class:hint", "     ↑/↓ move · Space tick or untick · A tick all · N clear · Enter continue\n\n"),
-               ("class:head", "         " + "  ".join(cell(h, w, al) for h, w, al, _ in columns) + "\n")]
+        out = [("class:qmark", "  ?  "), ("class:q", question + "\n"),
+               ("class:hint", "     ↑/↓ move  ·  Space tick or untick  ·  A tick all  ·  N clear  ·  Enter continue\n\n"),
+               ("class:head", "          " + "   ".join(cell(h, w, al) for h, w, al, _ in columns) + "\n")]
         for i, (key, cells, note) in enumerate(rows):
             here, on = i == cur[0], key in sel
-            out += [("class:pointer" if here else "", "   ❯ " if here else "     "),
+            out += [("class:pointer" if here else "", "     ❯  " if here else "        "),
                     ("class:on" if on else "class:off", "◉  " if on else "○  ")]
             for (h, w, al, style), c in zip(columns, cells):
                 st = "class:rowcur" if here else ""
                 if style:
                     st = f"{st} class:{style}".strip()
-                out.append((st, cell(c, w, al) + "  "))
+                out.append((st, cell(c, w, al) + "   "))
             if note:
                 out.append(("class:tag", note))
             out.append(("", "\n"))
@@ -270,8 +303,7 @@ def checkbox(question, columns, rows, selected, footer, min_selected=1, answer=N
         return out
 
     chosen = _app(render, kb).run()
-    console.print(Text.assemble(("  ✔ ", f"bold {GREEN}"), (question + " ", "bold"),
-                                (answer(chosen) if answer else ", ".join(chosen), f"bold {BLUE}")))
+    _answered(question, answer(chosen) if answer else ", ".join(chosen))
     return chosen
 
 
@@ -279,7 +311,7 @@ def secret(message):
     """Hidden entry (shown as dots). Returns the stripped text."""
     from prompt_toolkit import prompt
     from prompt_toolkit.styles import Style
-    return prompt([("class:qmark", "  ? "), ("class:q", message)], is_password=True,
+    return prompt([("class:qmark", "  ?  "), ("class:q", message)], is_password=True,
                   style=Style.from_dict(PT_STYLE)).strip()
 
 
@@ -288,36 +320,127 @@ def ask_text(message, default=""):
         return default
     from prompt_toolkit import prompt
     from prompt_toolkit.styles import Style
-    return prompt([("class:qmark", "  ? "), ("class:q", message + " ")], default=default or "",
+    return prompt([("class:qmark", "  ?  "), ("class:q", message + " ")], default=default or "",
                   style=Style.from_dict(PT_STYLE)).strip() or default
+
+
+# ---------------------------------------------------------------- file and folder windows (Windows + macOS)
+RESUME_EXTS = ("pdf", "docx", "txt", "md")
+
+
+def _osascript(script):
+    """Run AppleScript; returns its output, '' if the user cancelled, None if it can't run."""
+    try:
+        r = subprocess.run(["osascript", "-e", script], capture_output=True, text=True, timeout=600)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    if r.returncode != 0:
+        return "" if "-128" in r.stderr or "cancel" in r.stderr.lower() else None
+    return r.stdout.strip()
+
+
+def _as_str(s):
+    return '"' + str(s).replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+def _tk():
+    try:
+        import tkinter
+        root = tkinter.Tk()
+    except Exception:  # no Tk, or no display
+        return None
+    root.withdraw()
+    root.attributes("-topmost", True)
+    root.update()
+    return root
 
 
 def pick_file(title="Choose your resume", initialdir=None):
     """Open the system file window. Returns the chosen path, '' if cancelled, None if no window can open."""
+    if IS_MAC:
+        where = f" default location (POSIX file {_as_str(initialdir)})" if initialdir and Path(initialdir).is_dir() else ""
+        types = ", ".join(f'"{e}"' for e in RESUME_EXTS)  # filename extensions work as types on macOS
+        got = _osascript(f"POSIX path of (choose file with prompt {_as_str(title)} of type {{{types}}}{where})")
+        if got is not None:
+            return got
+    root = _tk()
+    if root is None:
+        return None
     try:
-        import tkinter
         from tkinter import filedialog
-    except ImportError:
-        return None
-    try:
-        root = tkinter.Tk()
-    except Exception:  # no display (SSH, server)
-        return None
-    try:
-        root.withdraw()
-        root.attributes("-topmost", True)
-        root.update()
         chosen = filedialog.askopenfilename(parent=root, title=title, initialdir=initialdir or None, filetypes=[
-            ("Resume (PDF, Word, text)", "*.pdf *.docx *.txt *.md"), ("All files", "*.*")])
+            ("Resume (PDF, Word, text)", " ".join(f"*.{e}" for e in RESUME_EXTS)), ("All files", "*.*")])
         return chosen or ""
     finally:
         root.destroy()
 
 
+def pick_folder(title="Choose where to save the job links page", initialdir=None):
+    """Open the system folder window. Returns the folder, '' if cancelled, None if no window can open."""
+    if IS_MAC:
+        where = f" default location (POSIX file {_as_str(initialdir)})" if initialdir and Path(initialdir).is_dir() else ""
+        got = _osascript(f"POSIX path of (choose folder with prompt {_as_str(title)}{where})")
+        if got is not None:
+            return got.rstrip("/") or got
+    root = _tk()
+    if root is None:
+        return None
+    try:
+        from tkinter import filedialog
+        start = initialdir if initialdir and Path(initialdir).is_dir() else None
+        chosen = filedialog.askdirectory(parent=root, title=title, initialdir=start, mustexist=False)
+        return str(Path(chosen)) if chosen else ""
+    finally:
+        root.destroy()
+
+
+def downloads_dir():
+    """The user's Downloads folder (follows a moved Downloads folder on Windows)."""
+    if IS_WINDOWS:
+        try:
+            import ctypes
+            from ctypes import wintypes
+            import uuid
+
+            class GUID(ctypes.Structure):
+                _fields_ = [("Data1", wintypes.DWORD), ("Data2", wintypes.WORD), ("Data3", wintypes.WORD), ("Data4", ctypes.c_ubyte * 8)]
+
+            u = uuid.UUID("{374DE290-123F-4565-9164-39C4925E467B}")  # FOLDERID_Downloads
+            g = GUID(u.fields[0], u.fields[1], u.fields[2], (ctypes.c_ubyte * 8).from_buffer_copy(u.bytes[8:]))
+            out = ctypes.c_wchar_p()
+            if ctypes.windll.shell32.SHGetKnownFolderPath(ctypes.byref(g), 0, None, ctypes.byref(out)) == 0:
+                path = out.value
+                ctypes.windll.ole32.CoTaskMemFree(out)
+                if path:
+                    return Path(path)
+        except Exception:
+            pass
+    return Path.home() / "Downloads"
+
+
+def open_path(path):
+    """Show a folder (or open a file) in Explorer / Finder."""
+    try:
+        if IS_WINDOWS:
+            os.startfile(str(path))  # noqa: S606 - opening the user's own folder
+        elif IS_MAC:
+            subprocess.Popen(["open", str(path)])
+        else:
+            subprocess.Popen(["xdg-open", str(path)])
+    except (OSError, AttributeError):
+        pass
+
+
 # ---------------------------------------------------------------- tables
+def indent(renderable, left=2):
+    """Line a table up with the rest of the text."""
+    from rich.padding import Padding
+    return Padding(renderable, (0, 0, 0, left))
+
+
 def table(*headers, title=None, colour=BLUE):
     t = Table(box=box.SIMPLE_HEAD, header_style=f"bold {colour}", title=title, title_style="bold", title_justify="left",
-              pad_edge=False, show_edge=False)
+              pad_edge=False, show_edge=False, padding=(0, 2))
     for h in headers:
         if isinstance(h, tuple):
             t.add_column(h[0], justify=h[1], style=h[2] if len(h) > 2 else None, no_wrap=True)

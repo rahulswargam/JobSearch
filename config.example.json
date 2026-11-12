@@ -1,16 +1,24 @@
 {
   "_help": "Copy to config.json and edit, or run: python -m jobsearch init. Command-line options override these. Your resume is chosen in a file window each run (or with --resume) and is never stored here.",
-  "roles": ["DevOps Engineer"],
+  "roles": [
+    "DevOps Engineer"
+  ],
   "location": "India",
-  "preferred_locations": ["Hyderabad", "Bengaluru", "Pune"],
-  "sources": ["linkedin", "naukri"],
+  "preferred_locations": [
+    "Hyderabad",
+    "Bengaluru",
+    "Pune"
+  ],
+  "sources": [
+    "linkedin",
+    "naukri"
+  ],
   "per_source": 25,
   "posted_within": "24h",
   "min_match": 40,
   "max_cost_usd": 0.5,
   "remote_only": false,
   "only_new": false,
-  "output_dir": "output",
   "profile": {
     "_help": "Leave empty to use what's read from the resume. Set a value to override it.",
     "title": "",

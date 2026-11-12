@@ -1,19 +1,21 @@
 """Command line: find fresh jobs with Apify actors, score them against your resume, write job_links.html.
 
-    python -m jobsearch                       guided search: API key, resume, sources, then run
+    python -m jobsearch                       guided search: API key, resume, sources, save folder, then run
     python -m jobsearch --dry-run             show what would run and what it may cost; spends nothing
-    python -m jobsearch -y                    no menus: config.json + APIFY_TOKEN (for scheduled runs)
+    python -m jobsearch -y                    no menus: config.json, --resume and the registered key (scheduled runs)
     python -m jobsearch --resume cv.pdf --role "DevOps Engineer" --location India --sources linkedin,naukri
     python -m jobsearch credits               credit left, and what each source costs and has used
+    python -m jobsearch change-key            register a different Apify API key
+    python -m jobsearch forget-key            remove the registered key from this computer
     python -m jobsearch profile               show what was read from your resume
     python -m jobsearch sources               list job sources, their actors and prices (offline)
-    python -m jobsearch rescore output/runs/<run>   re-score a past run (no Apify credits used)
+    python -m jobsearch rescore <run folder>  re-score a past run (no Apify credits used)
 
-Your API key and resume are never saved by this tool.
+The API key is registered once in your system's password store (Windows Credential Manager or
+macOS Keychain), never in this project. Your resume is only read, never copied or saved.
 """
 import argparse
 import json
-import os
 import shutil
 import sys
 import threading
@@ -28,17 +30,24 @@ from rich.spinner import Spinner
 from rich.table import Table
 from rich.text import Text
 
-from . import core, report, resume, sources, ui
+from . import core, keystore, report, resume, sources, ui
 from . import normalize as nz
 from .apify import Apify, ApifyError
 from .ui import BLUE, GREEN, MUTED, RED, YELLOW, console
 
-TOKEN_VARS = ("APIFY_TOKEN", "APIFY_API_TOKEN", "APIFY_API_KEY")
+TOKEN_VARS = keystore.ENV_NAMES
 RESUME_TYPES = (".pdf", ".docx", ".txt", ".md", ".text")
-DEFAULTS = {"sources": sources.DEFAULT_KEYS, "per_source": 25, "posted_within": "24h", "min_match": 40,
-            "max_cost_usd": 0.50, "output_dir": "output"}
-SAVED_KEYS = ("roles", "location", "preferred_locations", "sources")  # never the resume, never the key
-STEPS = 3
+DEFAULTS = {"sources": sources.DEFAULT_KEYS, "per_source": 25, "posted_within": "24h", "min_match": 40, "max_cost_usd": 0.50}
+SAVED_KEYS = ("roles", "location", "preferred_locations", "sources", "output_dir")  # never the resume, never the key
+STEPS = 4
+
+
+def default_output_dir():
+    return ui.downloads_dir() / "JobSearch"
+
+
+def output_dir(cfg):
+    return Path(cfg["output_dir"]).expanduser() if cfg.get("output_dir") else default_output_dir()
 
 
 class Quit(Exception):
@@ -144,53 +153,65 @@ def check_key(tok):
         raise Quit(str(e))
 
 
-def enter_key(reason=None):
-    """Show where to get a key (clickable), offer to open it, then take the key hidden. Never saved."""
-    if reason:
-        ui.warn(reason)
-    ui.info(Text.assemble(("Get your key here: ", ""), ui.link(ui.APIFY_KEY_PAGE, ui.APIFY_KEY_PAGE + "  ↗", GREEN),
-                          ("   (Ctrl+click to open)", MUTED)))
-    choice = ui.select("How do you want to continue?", [
-        ("Open the Apify API key page in my browser", "copy the key there, then come back here"),
+def enter_key():
+    """Offer to open the Apify key page, take the key (hidden), check it, and register it once."""
+    choice = ui.select("How do you want to add your API key?", [
+        ("Open the Apify API key page in my browser", "Copy your key there, then come back and paste it here"),
         ("I have my key, let me paste it", "")], default=0)
     if choice == 0:
         webbrowser.open(ui.APIFY_KEY_PAGE)
-        ui.info("Opened the Apify key page. Copy your key (Personal API tokens → copy), then paste it below.")
+        ui.gap()
+        ui.info("The Apify key page is open in your browser. Copy your key, then paste it below.")
+    ui.gap()
     for attempt in range(3):
-        tok = ui.secret("Paste your Apify API key (hidden), then press Enter: ")
+        tok = ui.secret("Paste your Apify API key (hidden), then press Enter:  ")
         if not tok:
             raise Quit("No key entered; nothing was spent.")
         acct = check_key(tok)
         if acct:
+            ui.gap()
             ui.ok(account_text(acct))
-            ui.info("This key is used for this search only. It is not saved anywhere.")
+            try:
+                where = keystore.save(tok)
+                ui.ok(f"Key registered in {where}. You won't be asked for it again.")
+            except Exception as e:  # the search still works this time
+                ui.warn(f"Couldn't register the key ({e}); you'll be asked again next time.")
             return tok, acct
         ui.error("Apify rejected that key. Copy the whole key and try again." if attempt < 2 else "Apify rejected that key.")
     raise Quit("Three keys were rejected; nothing was spent.")
 
 
 def key_step(guided):
-    """Look for a key first (APIFY_TOKEN...). If there is one, offer to use it or another account's key."""
-    for name in TOKEN_VARS:
-        tok = os.environ.get(name, "").strip()
-        if not tok:
-            continue
+    """Look for a registered key (or APIFY_TOKEN) first. If found: continue with it, or change it."""
+    tok, where = keystore.find()
+    if tok:
         acct = check_key(tok)
         if not acct:
+            if where == "saved":
+                keystore.forget()
+                msg = "The registered API key no longer works (it was deleted or regenerated on Apify)."
+            else:
+                msg = f"Apify rejected the key in {where}."
             if not interactive():
-                raise Quit(f"Apify rejected the key in {name}. Check it at {ui.APIFY_KEY_PAGE}")
-            return enter_key(f"Apify rejected the key in the {name} environment variable.")
-        ui.ok(account_text(acct, name))
+                raise Quit(f"{msg} Run  python -m jobsearch change-key  in a terminal.")
+            ui.warn(msg)
+            ui.gap()
+            return enter_key()
+        ui.ok(Text.assemble(("API key found ", "bold"), (f"({keystore.store_name() if where == 'saved' else where})", MUTED)))
+        ui.ok(account_text(acct))
         if guided:
-            choice = ui.select("Which Apify key should this search use?", [
-                ("Use this key", f"{acct.get('username') or 'this account'} · {ui.money(acct.get('left'))} left"),
-                ("Use a different API key", "for example another Apify account with credit left")], default=0)
+            ui.gap()
+            choice = ui.select("Which API key should this search use?", [
+                ("Continue with this key", f"{acct.get('username') or 'this account'}  ·  {ui.money(acct.get('left'))} credit left"),
+                ("Change API key", "Use a different key, for example another Apify account with credit left")], default=0)
             if choice == 1:
+                ui.gap()
                 return enter_key()
         return tok, acct
     if not interactive():
-        raise Quit(f"No Apify API key found. Set the APIFY_TOKEN environment variable (your key is at {ui.APIFY_KEY_PAGE}).")
-    ui.warn("No Apify API key found on this computer (looked for APIFY_TOKEN).")
+        raise Quit("No API key found. Run  python -m jobsearch  once in a terminal to register your Apify key.")
+    ui.warn(Text("No API key found", style="bold"))
+    ui.gap()
     return enter_key()
 
 
@@ -216,7 +237,7 @@ def valid_resume(p):
 
 def resume_step(cfg):
     """Open the file window to choose the resume. Nothing about it is saved."""
-    start = Path(cfg["resume"]).expanduser().parent if cfg.get("resume") else None
+    start = Path(cfg["resume"]).expanduser().parent if cfg.get("resume") else Path.home()
     ui.info("A file window is opening: choose your resume (PDF, Word or text).")
     while True:
         chosen = ui.pick_file("Choose your resume", str(start) if start and start.is_dir() else None)
@@ -224,6 +245,7 @@ def resume_step(cfg):
             ui.warn("A file window can't open here.")
             chosen = ui.ask_text("Paste the full path to your resume:")
         elif chosen == "":
+            ui.gap()
             choice = ui.select("No file was chosen. What now?", ["Open the file window again", "Type the file path instead", "Quit"], 0)
             if choice == 2:
                 raise Quit("Cancelled; nothing was spent.")
@@ -233,7 +255,8 @@ def resume_step(cfg):
                 continue
         path = valid_resume(chosen) if chosen else None
         if path:
-            ui.ok(f"Resume: {Path(path).name}")
+            ui.ok(Text.assemble(("Resume  ", "bold"), (Path(path).name, f"bold {BLUE}")))
+            ui.gap()
             return path
 
 
@@ -280,7 +303,8 @@ def show_profile(p):
     g.add_row("Based", ", ".join(x for x in (p.city, p.country) if x) or "-")
     g.add_row(f"Skills {len(p.skills)}", skills)
     console.print(Panel(g, title=Text(" Your resume ", style=f"bold white on {GREEN}"), title_align="left",
-                        border_style=GREEN, expand=False, padding=(0, 2)))
+                        border_style=GREEN, expand=False, padding=(1, 3)))
+    console.print()
 
 
 def settings_step(cfg, prof, a):
@@ -292,15 +316,51 @@ def settings_step(cfg, prof, a):
         cfg["location"] = prof.country or prof.city
     if not cfg.get("preferred_locations"):
         cfg["preferred_locations"] = [prof.city] if prof.city else []
-    console.print(Text.assemble(("  Search for  ", MUTED), (" / ".join(cfg["roles"]) or "-", f"bold {BLUE}"),
-                                ("  in  ", MUTED), (cfg["location"] or "anywhere", "bold"),
-                                ("  ·  prefer  ", MUTED), (", ".join(cfg["preferred_locations"]) or "-", "bold")))
+    console.print(Text.assemble(("  Search for   ", MUTED), (" / ".join(cfg["roles"]) or "-", f"bold {BLUE}"),
+                                ("   in   ", MUTED), (cfg["location"] or "anywhere", "bold"),
+                                ("   ·   prefer   ", MUTED), (", ".join(cfg["preferred_locations"]) or "-", "bold")))
+    ui.gap()
     if a.role and a.location:
         return
     if ui.select("Search settings", [("Looks good, continue", ""), ("Change the role, location or cities", "")], 0) == 1:
+        ui.gap()
         cfg["roles"] = split_list(ui.ask_text("Role(s) to search for, comma separated:", ", ".join(cfg["roles"]))) or cfg["roles"]
         cfg["location"] = ui.ask_text("Where to search (a country covers all of it, or Remote):", cfg["location"])
         cfg["preferred_locations"] = split_list(ui.ask_text("Cities you'd work in, comma separated:", ", ".join(cfg["preferred_locations"])))
+
+
+# ---------------------------------------------------------------- step 4: where to save
+def save_step(cfg):
+    """Where the job links page goes. Default: Downloads/JobSearch, or the folder chosen last time.
+    'Choose another folder' opens a folder window and fills the chosen path in, ready to confirm."""
+    current = output_dir(cfg)
+    console.print(Text.assemble(("  The job links page will be saved in   ", MUTED), (str(current), f"bold {BLUE}")))
+    ui.gap()
+    while True:
+        choice = ui.select("Where should the job links page be saved?", [
+            ("Save it here", str(current)),
+            ("Choose another folder", "A folder window opens; the path you pick is filled in for you")], 0)
+        if choice == 0:
+            break
+        start = current if current.is_dir() else (current.parent if current.parent.is_dir() else Path.home())
+        picked = ui.pick_folder("Choose where to save the job links page", str(start))
+        ui.gap()
+        if picked is None:
+            ui.warn("A folder window can't open here; type the folder instead.")
+            picked = str(current)
+        elif picked == "":
+            ui.info("No folder chosen; keeping the one above.")
+            ui.gap()
+            continue
+        typed = clean_path(ui.ask_text("Save to (Enter to confirm, or edit the path):", picked))
+        current = Path(typed or picked).expanduser()
+        break
+    try:
+        current.mkdir(parents=True, exist_ok=True)
+    except OSError as e:
+        raise Quit(f"Can't create {current}: {e}")
+    cfg["output_dir"] = str(current)
+    return current
 
 
 # ---------------------------------------------------------------- step 3: sources
@@ -324,7 +384,8 @@ def sources_step(cfg, search, tok, acct):
     """Tick the sources; the line under the list shows how much will be debited as you tick."""
     used_by = Apify(tok).usage_by_actor(acct.get("cycle_start")) if tok else {}
     console.print(Text.assemble(("  ", ""), credit_text(acct) if acct else Text("Credit unknown", style=MUTED),
-                                (". Apify credit is one balance shared by every source.", MUTED)))
+                                (".  Apify credit is one balance shared by every source.", MUTED)))
+    ui.gap()
     current = set(s.key for s in sources.resolve(cfg.get("sources")))
     cap = float(cfg.get("max_cost_usd") or 0) or None
     left = acct.get("left") if acct else None
@@ -359,17 +420,17 @@ def sources_step(cfg, search, tok, acct):
 
 # ---------------------------------------------------------------- plan, confirm, run
 def show_plan(search, prefs, planned):
-    console.print(Text.assemble(("Search   ", f"bold {BLUE}"), (" / ".join(search.roles), "bold"),
+    console.print(Text.assemble(("  Search   ", f"bold {BLUE}"), (" / ".join(search.roles), "bold"),
                                 (f" · {search.location or 'anywhere'} · {report.window_label(search.hours)}", ""),
                                 (" · remote only" if search.remote else "", ""), (" · only new since last run" if search.only_new else "", "")))
-    console.print(Text.assemble(("Prefer   ", f"bold {BLUE}"), (", ".join(prefs.preferred) or "-", "")))
+    console.print(Text.assemble(("  Prefer   ", f"bold {BLUE}"), (", ".join(prefs.preferred) or "-", "")))
     t = ui.table("source", "actor", ("max jobs", "right"), ("up to", "right", "#F29900"))
     for p in planned:
         t.add_row(Text(p.source.key, style="bold"), Text(p.source.actor, style=MUTED), str(p.max_items), ui.money(p.estimate))
     total = sum(p.estimate for p in planned)
     t.add_row("", Text("total  (free-plan prices; paid plans cost less)", style=MUTED), "", Text(ui.money(total), style="bold #F29900"))
     console.print()
-    console.print(t)
+    console.print(ui.indent(t))
     return total
 
 
@@ -382,19 +443,24 @@ def budget_step(search, srcs, cfg, tok, acct, guided):
         if left is not None and left < 0.001:
             if not guided:
                 raise Quit("This Apify account has no credit left this month. Nothing was run.")
-            if ui.select("This Apify account has no credit left this month.", [("Use a different API key", ""), ("Quit", "")], 0) == 1:
+            if ui.select("This Apify account has no credit left this month.",
+                         [("Change API key", "Use another Apify account with credit left"), ("Quit", "")], 0) == 1:
                 raise Quit("Cancelled; nothing was spent.")
+            ui.gap()
             tok, acct = enter_key()
+            ui.gap()
             continue
         if left is not None and total > left:
             if not guided:
                 return tok, acct, left, f"you have {ui.money(left)} Apify credit left"
             choice = ui.select(f"Up to {ui.money(total)} is more than the {ui.money(left)} credit left on this account.", [
-                ("Switch to another Apify account", "paste a different API key"),
-                ("Run anyway with smaller limits", f"sources return fewer jobs to stay within {ui.money(left)}"),
-                ("Cancel", "nothing is spent")], 0)
+                ("Change API key", "Switch to another Apify account with more credit"),
+                ("Run anyway with smaller limits", f"Sources return fewer jobs to stay within {ui.money(left)}"),
+                ("Cancel", "Nothing is spent")], 0)
+            ui.gap()
             if choice == 0:
                 tok, acct = enter_key()
+                ui.gap()
                 continue
             if choice == 2:
                 raise Quit("Cancelled; nothing was spent.")
@@ -403,8 +469,9 @@ def budget_step(search, srcs, cfg, tok, acct, guided):
             if not guided:
                 return tok, acct, cap, f"your cap is {ui.money(cap)} per search (raise it with --budget)"
             choice = ui.select(f"Up to {ui.money(total)} is over your {ui.money(cap)} per-search cap.", [
-                (f"Raise the cap to {ui.money(total)} for this search", "every source can return all its jobs"),
-                (f"Keep the {ui.money(cap)} cap", "sources return fewer jobs")], 0)
+                (f"Raise the cap to {ui.money(total)} for this search", "Every source can return all its jobs"),
+                (f"Keep the {ui.money(cap)} cap", "Sources return fewer jobs")], 0)
+            ui.gap()
             if choice == 0:  # no per-search cap this time; never more than the credit left
                 return tok, acct, left, None
             return tok, acct, cap, f"your cap is {ui.money(cap)} per search"
@@ -445,7 +512,7 @@ class RunBoard:
                     status = Spinner("dots", text=Text(" " + st, style=BLUE), style=BLUE)
                 t.add_row(Text(key, style="bold"), Text(r["actor"], style=MUTED), status,
                           "" if r["rows"] is None else str(r["rows"]), "" if r["cost"] is None else ui.money(r["cost"]))
-        return t
+        return ui.indent(t)
 
 
 def run_actors(tok, planned, run_dir):
@@ -463,7 +530,7 @@ def cmd_sources(a):
     for i, src in enumerate(sources.ALL, 1):
         about = src.blurb + (" (default)" if src.default else "")
         t.add_row(str(i), Text(src.key, style="bold"), src.region, Text(src.actor, style=MUTED), ui.money(src.estimate(s)), about)
-    console.print(t)
+    console.print(ui.indent(t))
     say("Free-plan prices; paid Apify plans are cheaper. For your credit and usage per source:  python -m jobsearch credits")
 
 
@@ -486,8 +553,26 @@ def cmd_credits(a):
         est, runs, used = usage_cells(src, search, acct, used_by)
         t.add_row(str(i), Text(src.key, style="bold"), Text(src.actor, style=MUTED), ui.money(est), runs, used)
     console.print()
-    console.print(t)
+    console.print(ui.indent(t))
     say(f"per run = the most one search of {search.limit} jobs can cost · runs left = how many your remaining credit covers")
+
+
+def cmd_change_key(a):
+    if not interactive():
+        raise Quit("change-key asks for your key; run it in a terminal.")
+    ui.banner()
+    enter_key()
+    ui.credit_footer()
+
+
+def cmd_forget_key(a):
+    if keystore.forget():
+        ui.ok("The registered Apify API key was removed from this computer.")
+    else:
+        ui.info("There was no registered Apify API key.")
+    _, where = keystore.from_environment()
+    if where:
+        ui.info(f"A key is still set in {where}; it's used when no key is registered.")
 
 
 def cmd_init(a):
@@ -532,6 +617,8 @@ def cmd_search(a):
             ui.ok(f"Resume: {a.resume}  (from --resume)")
         else:
             cfg["resume"] = resume_step(cfg)
+    elif not cfg.get("resume") and interactive():  # e.g. --dry-run in a terminal
+        cfg["resume"] = resume_step(cfg)
     prof = load_profile(cfg)
     if guided:
         show_profile(prof)
@@ -547,6 +634,14 @@ def cmd_search(a):
             ui.ok(f"Sources: {a.sources}  (from --sources)")
         else:
             sources_step(cfg, search, tok, acct)
+
+    # Step 4 · Where to save the job links page (remembered for next time)
+    if guided:
+        ui.step(4, STEPS, "Where to save")
+        if a.out:
+            ui.ok(f"Saving to {output_dir(cfg)}  (from --out)")
+        else:
+            save_step(cfg)
         save_choices(cfg)
     else:
         show_profile(prof)
@@ -557,6 +652,10 @@ def cmd_search(a):
     except ValueError as e:
         raise Quit(str(e))
 
+    if guided:
+        console.print()
+        console.print(Text.assemble((" REVIEW ", f"bold white on {BLUE}"), ("   Check the search before anything is spent", MUTED)))
+        console.rule(style=BLUE, characters="─")
     console.print()
     if a.dry_run:
         budget = float(cfg.get("max_cost_usd") or 0) or None
@@ -578,16 +677,17 @@ def cmd_search(a):
         return
 
     if guided:
-        if ui.select("Ready?", [(f"Run the search · up to {ui.money(min(total, budget or total))}", ""),
-                                ("Cancel", "nothing is spent")], 0) == 1:
+        console.print()
+        if ui.select("Ready?", [(f"Run the search  ·  up to {ui.money(min(total, budget or total))}", ""),
+                                ("Cancel", "Nothing is spent")], 0) == 1:
             raise Quit("Cancelled; nothing was spent.")
-    elif not a.yes and not interactive():
-        pass  # no terminal to ask in: -y is implied for scheduled runs
 
-    out = Path(cfg.get("output_dir") or "output")
+    out = output_dir(cfg)
     run_dir = out / "runs" / datetime.now().strftime("%Y-%m-%d_%H%M%S")
     console.print()
-    console.print(Text.assemble((" RUNNING ", f"bold white on {BLUE}"), (f"  {len(planned)} actor(s) on Apify · Ctrl+C stops and keeps what finished", MUTED)))
+    console.print(Text.assemble((" RUNNING ", f"bold white on {BLUE}"), (f"   {len(planned)} actor(s) on Apify  ·  Ctrl+C stops and keeps what finished", MUTED)))
+    console.rule(style=BLUE, characters="─")
+    console.print()
     started = datetime.now()
     try:
         raw = run_actors(tok, planned, run_dir)
@@ -626,7 +726,7 @@ def cmd_rescore(a):
     prefs = core.build_prefs(prof, search, cfg)
     raw = core.load_raw(run_dir / "raw")
     say(f"\nRe-scoring {sum(len(r.get('items') or []) for r in raw.values())} saved rows from {run_dir} (no Apify credits used)")
-    finish(raw, search, prof, prefs, run_dir, Path(cfg.get("output_dir") or "output"), meta, a)
+    finish(raw, search, prof, prefs, run_dir, output_dir(cfg), meta, a)
 
 
 def finish(raw, search, prof, prefs, run_dir, out, meta, a, acct=None):
@@ -640,37 +740,44 @@ def finish(raw, search, prof, prefs, run_dir, out, meta, a, acct=None):
     count = lambda c: sum(1 for j in jobs if j["relevant"] and j["chance"] == c)
     off = sum(1 for j in jobs if not j["relevant"])
     console.print()
-    console.print(Text.assemble((" RESULTS ", f"bold white on {GREEN}"), (f"  {stats['rows']} jobs fetched · {stats['stale']} too old · "
-                                f"{stats['duplicates']} duplicates · {stats['unreadable']} unreadable · {off} outside your field", MUTED)))
-    console.print(Text.assemble(("  ", ""), (f" High {count('High')} ", f"bold white on {GREEN}"), ("  ", ""),
-                                (f" Medium {count('Medium')} ", "bold black on #FBBC05"), ("  ", ""),
-                                (f" Low {count('Low')} ", f"bold white on {RED}"), ("   chance of an interview", MUTED)))
+    console.print(Text.assemble((" RESULTS ", f"bold white on {GREEN}"), ("   Your ranked job links are ready", MUTED)))
+    console.rule(style=GREEN, characters="─")
+    console.print()
+    console.print(Text.assemble(("  ", ""), (f" High {count('High')} ", f"bold white on {GREEN}"), ("   ", ""),
+                                (f" Medium {count('Medium')} ", "bold black on #FBBC05"), ("   ", ""),
+                                (f" Low {count('Low')} ", f"bold white on {RED}"), ("    chance of an interview", MUTED)))
+    console.print()
+    console.print(Text(f"  {stats['rows']} jobs fetched  ·  {stats['stale']} too old  ·  {stats['duplicates']} duplicates  ·  "
+                       f"{stats['unreadable']} unreadable  ·  {off} outside your field", style=MUTED))
     for key, r in raw.items():
         if r.get("error"):
             ui.warn(f"{key}: {r['error']}")
     if meta.get("cost_usd") is not None:
         line = Text.assemble(("  Cost about ", ""), (ui.money(meta["cost_usd"]), "bold #F29900"), (" this search", ""))
         if acct and acct.get("left") is not None:
-            line.append_text(Text.assemble(("  ·  credit left about ", MUTED), (ui.money(max(0.0, acct["left"] - meta["cost_usd"])), f"bold {GREEN}")))
+            line.append_text(Text.assemble(("   ·   credit left about ", MUTED), (ui.money(max(0.0, acct["left"] - meta["cost_usd"])), f"bold {GREEN}")))
         console.print(line)
     top = [j for j in jobs if j["relevant"] and j["chance"] in ("High", "Medium")][:8]
     if top:
-        t = ui.table(("fit", "right"), "chance", "title", "company", "source", title="  Top matches")
+        t = ui.table(("fit", "right"), "chance", "title", "company", "source", title="Top matches")
         for j in top:
             c = GREEN if j["chance"] == "High" else "#F29900"
             t.add_row(Text(str(j["score"]), style=f"bold {c}"), Text(j["chance"], style=c), j["title"][:52], j["company"][:28], j["source_label"])
         console.print()
-        console.print(t)
+        console.print(ui.indent(t))
     console.print()
-    console.print(Text.assemble(("  Job links page  ", f"bold {BLUE}"), ui.link(latest.as_uri(), str(latest), GREEN), (f"   ({n} jobs)", MUTED)))
-    console.print(Text.assemble(("  This run        ", f"bold {BLUE}"), (str(run_dir.resolve()), ""), ("   (jobs.csv, jobs.json, raw/)", MUTED)))
+    console.print(Text.assemble(("  Saved   ", f"bold {BLUE}"), ui.link(latest.as_uri(), str(latest), GREEN), (f"   ({n} jobs)", MUTED)))
+    console.print(Text.assemble(("  Run     ", f"bold {BLUE}"), (str(run_dir.resolve()), ""), ("   (jobs.csv, jobs.json, raw)", MUTED)))
+    console.print()
     want_open = getattr(a, "open", False)
     if not want_open and interactive() and not getattr(a, "yes", False):
-        want_open = ui.select("Open the job links page now?", [("Open it in my browser", ""), ("Not now", "")], 0) == 0
+        choice = ui.select("What next?", [("Open the job links page in my browser", ""), ("Open the folder", str(out)), ("Done", "")], 0)
+        if choice == 1:
+            ui.open_path(out)
+        want_open = choice == 0
     if want_open:
         webbrowser.open(latest.as_uri())
-    console.print(Text.assemble(("\n  Built by ", MUTED), (ui.AUTHOR, f"bold {YELLOW}"), ("  ·  ", MUTED),
-                                ui.link(ui.WEBSITE, "rahulswargam.online", GREEN)))
+    ui.credit_footer()
 
 
 # ---------------------------------------------------------------- argparse
@@ -681,7 +788,7 @@ def add_search_args(p):
     p.add_argument("--prefer", action="append", help="a city you'd work in (scores higher); repeat for more")
     p.add_argument("--min-match", type=int, help="leave out jobs whose resume match is below this (default 40)")
     p.add_argument("--config", help="config file (default: ./config.json)")
-    p.add_argument("--out", help="output folder (default: ./output)")
+    p.add_argument("--out", help="folder for the job links page (default: Downloads/JobSearch, or the folder chosen last time)")
     p.add_argument("--open", action="store_true", help="open the page in your browser when done")
 
 
@@ -699,10 +806,12 @@ def build_parser():
         target.add_argument("--remote-only", action="store_true", help="remote jobs only, where the board supports it")
         target.add_argument("--only-new", action="store_true", help="ask actors for jobs new since your last run (cheaper on repeat runs)")
         target.add_argument("--dry-run", action="store_true", help="show the plan and cost estimate; spend nothing, no key needed")
-        target.add_argument("-y", "--yes", action="store_true", help="no menus: use config.json, --resume and APIFY_TOKEN")
+        target.add_argument("-y", "--yes", action="store_true", help="no menus: use config.json, --resume and the registered key")
     c = sub.add_parser("credits", help="credit left, cost per source, and what each source has used this month")
     c.add_argument("--config")
     c.add_argument("--per-source", type=int)
+    sub.add_parser("change-key", help="register a different Apify API key")
+    sub.add_parser("forget-key", help="remove the registered Apify API key from this computer")
     pr = sub.add_parser("profile", help="show what was read from your resume")
     add_search_args(pr)
     sub.add_parser("sources", help="list sources, actors and prices (offline)")
@@ -722,7 +831,8 @@ def main(argv=None):
         except (AttributeError, ValueError):
             pass
     a = build_parser().parse_args(argv)
-    commands = {"sources": cmd_sources, "profile": cmd_profile, "init": cmd_init, "rescore": cmd_rescore, "credits": cmd_credits}
+    commands = {"sources": cmd_sources, "profile": cmd_profile, "init": cmd_init, "rescore": cmd_rescore, "credits": cmd_credits,
+                "change-key": cmd_change_key, "forget-key": cmd_forget_key}
     try:
         commands.get(a.cmd, cmd_search)(a)
     except Quit as e:
