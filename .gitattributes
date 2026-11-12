@@ -1,0 +1,4 @@
+# Keep launchers working on each OS
+*.command text eol=lf
+*.sh text eol=lf
+*.bat text eol=crlf
