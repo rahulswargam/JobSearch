@@ -1,0 +1,20 @@
+# Personal data: never commit these (this repo is public)
+config.json
+output/
+.env
+.env.*
+*.pdf
+*.docx
+*.doc
+*.rtf
+credentials*.json
+*token*.txt
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+# Editors / tools
+.claude/
+.vscode/
+.idea/
